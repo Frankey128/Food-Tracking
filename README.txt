@@ -42,6 +42,14 @@ USING IT
    and press Add. Edit any row to fix the numbers. "Re-estimate" on an
    AI row re-runs the estimate from that row's current name.
 
+5. Add from a photo / screenshot: "Photo / label" -> take a photo or pick
+   an image (a nutrition label, a recipe, a menu, an app screenshot, or a
+   plated meal). Claude reads it, then you say how much you had (grams,
+   servings, "N of M servings", or % of the plate) and it logs the scaled
+   macros. On desktop you can also paste a screenshot (Ctrl+V).
+   The image is shrunk in the browser before sending (to keep token cost
+   down) and is NEVER stored - only the numbers it produced are kept.
+
 MOVING BETWEEN DAYS
    - The < and > arrows step one day; "Today" jumps back to today.
    - Tap the date to pick any date from a calendar.
