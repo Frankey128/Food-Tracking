@@ -183,7 +183,7 @@
   .lbl{font-size:11px;color:var(--muted);display:block;margin-bottom:4px;font-weight:500}
 
   /* photo review */
-  #pr-thumb{max-height:130px;max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;margin-bottom:8px}
+  #pr-thumb,#ph-thumb{max-height:130px;max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;margin-bottom:8px}
   .pv{font-size:13px;margin-top:10px;display:flex;gap:14px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
   .pv b{font-weight:750;font-size:15px}
   .prchips{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
@@ -304,6 +304,16 @@
       <div class="row" style="margin-top:8px">
         <button class="primary grow" id="mAdd">Add to log</button>
         <button class="ghost" id="mCancel">Cancel</button>
+      </div>
+    </div>
+
+    <div id="photoHint" style="display:none;margin-top:10px">
+      <img id="ph-thumb" alt="">
+      <label class="lbl">Add a note to help the AI (optional)</label>
+      <input id="ph-note" placeholder='e.g. "strawberry flavour", "I had 2", "the 500 g pack", "just the chicken"' autocomplete="off">
+      <div class="row" style="margin-top:8px">
+        <button class="primary grow" id="ph-read">Read image</button>
+        <button class="ghost" id="ph-cancel">Cancel</button>
       </div>
     </div>
 
@@ -453,6 +463,7 @@ Rules:
 - Recipe with no panel: estimate the WHOLE recipe total; basis "whole_recipe"; servings_total = the stated yield (or your best guess).
 - Plated meal, or no usable text: estimate the whole plate; basis "whole_item"; set grams; confidence "low" or "medium".
 - protein_g/fat_g/carbs_g/kcal are for the quantity implied by "basis". Round grams and kcal to whole numbers.
+- The user may add a note (which flavour, how many, pack size, "no rice"). When the image is ambiguous, follow the note.
 - No food information at all: {"ok":false,"note":"<why>"}.`;
 
   // ---------- state ----------
@@ -469,6 +480,8 @@ Rules:
     photoReviewOpen: false,
     photoPortion: 0,
     photoThumbUrl: null,
+    pendingPhoto: null,
+    photoHintOpen: false,
   };
 
   // ---------- date helpers ----------
@@ -667,7 +680,7 @@ Rules:
       if(JSON.stringify(state.data) !== before){
         saveLocal();
         if(doRender){
-          if(state.editingId || state.manualOpen || state.photoReviewOpen){ state.pendingRefresh = true; }
+          if(state.editingId || state.manualOpen || state.photoReviewOpen || state.photoHintOpen){ state.pendingRefresh = true; }
           render();
         }
       }
@@ -685,7 +698,7 @@ Rules:
       state.data = mergeData(state.data, merged);
       if(JSON.stringify(state.data) !== before){
         saveLocal();
-        if(!state.editingId && !state.manualOpen && !state.photoReviewOpen) render();
+        if(!state.editingId && !state.manualOpen && !state.photoReviewOpen && !state.photoHintOpen) render();
       }
       updateSyncPill(true);
     }catch(e){ cloudError = "offline"; updateSyncPill(); }
@@ -767,10 +780,11 @@ Rules:
     return obj;
   }
   function estimate(text){ return callClaude(SYSTEM_PROMPT, text, 2048); }
-  function estimateImage(b64){
+  function estimateImage(b64, hint){
     return callClaude(SYSTEM_PROMPT_IMG, [
       { type:"image", source:{ type:"base64", media_type:"image/jpeg", data:b64 } },
-      { type:"text", text:"Extract the food information from this image as specified." },
+      { type:"text", text:"Extract the food information from this image as specified."
+        + (hint ? ' The user\'s note about it: "' + hint + '". Use it to resolve which item, flavour, quantity or pack size when the image is ambiguous.' : "") },
     ], 1024);
   }
   function parseLooseJSON(s){
@@ -869,16 +883,58 @@ Rules:
   async function addFromPhoto(file){
     if(!file || state.busy) return;
     if(!/^image\//.test(file.type || "")){ toast("That's not an image.", true); return; }
-    setBusy(true, "Reading image…");
+    setBusy(true, "Preparing image…");
     let b64;
     try{ b64 = await prepImage(file); }
     catch(e){ toast("Couldn't read that image.", true); setBusy(false); return; }
+    setBusy(false);
+    openPhotoHint(b64, file);
+  }
+
+  function openPhotoHint(b64, file){
+    closePhotoReview();
+    state.pendingPhoto = { b64, file };
+    state.photoHintOpen = true;
+    state.manualOpen = false; $("#manualForm").style.display = "none";
+    if(state.photoThumbUrl){ URL.revokeObjectURL(state.photoThumbUrl); state.photoThumbUrl = null; }
+    state.photoThumbUrl = URL.createObjectURL(file);
+    const t = $("#ph-thumb"); t.src = state.photoThumbUrl; t.style.display = "block";
+    $("#ph-note").value = ($("#foodText").value || "").trim();   // carry over anything typed in the search box
+    $("#photoHint").style.display = "block";
+    $("#photoHint").scrollIntoView({ block:"nearest" });
+    try{ $("#ph-note").focus(); }catch(e){}
+  }
+
+  function closePhotoHint(){
+    if(state.photoThumbUrl){ URL.revokeObjectURL(state.photoThumbUrl); state.photoThumbUrl = null; }
+    state.pendingPhoto = null;
+    state.photoHintOpen = false;
+    $("#photoHint").style.display = "none";
+  }
+
+  async function runPhotoRead(){
+    const p = state.pendingPhoto;
+    if(!p || state.busy) return;
+    const hint = ($("#ph-note").value || "").trim();
+    $("#photoHint").style.display = "none";
+    state.photoHintOpen = false;
+    setBusy(true, "Reading image…");
     try{
-      const r = await estimateImage(b64);
-      b64 = null;                                   // drop the image bytes immediately
-      if(r.ok === false){ toast(r.note || "No food information found in that image."); setBusy(false); return; }
+      const r = await estimateImage(p.b64, hint);
+      const file = p.file;
+      state.pendingPhoto = null;                     // drop the image bytes
+      if(r.ok === false){
+        toast(r.note || "No food information found in that image.");
+        if(state.photoThumbUrl){ URL.revokeObjectURL(state.photoThumbUrl); state.photoThumbUrl = null; }
+        setBusy(false); return;
+      }
       openPhotoReview(r, file);
-    }catch(err){ toast(err.message, true); }
+      if(hint && ($("#foodText").value || "").trim() === hint) $("#foodText").value = "";
+    }catch(err){
+      toast(err.message, true);
+      state.photoHintOpen = true;
+      $("#photoHint").style.display = "block";       // keep the note + let them retry
+    }
     setBusy(false);
   }
 
@@ -1280,6 +1336,9 @@ Rules:
     $("#photoLibBtn").onclick = ()=> $("#photoLibInput").click();
     $("#photoCamInput").onchange = onPick;
     $("#photoLibInput").onchange = onPick;
+    $("#ph-read").onclick = runPhotoRead;
+    $("#ph-cancel").onclick = closePhotoHint;
+    $("#ph-note").addEventListener("keydown", e=>{ if(e.key === "Enter"){ e.preventDefault(); runPhotoRead(); } });
     $("#pr-add").onclick = confirmPhotoAdd;
     $("#pr-cancel").onclick = closePhotoReview;
     document.addEventListener("paste", e=>{

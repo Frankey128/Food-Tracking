@@ -42,11 +42,16 @@ USING IT
    and press Add. Edit any row to fix the numbers. "Re-estimate" on an
    AI row re-runs the estimate from that row's current name.
 
-5. Add from a photo / screenshot: "Photo / label" -> take a photo or pick
-   an image (a nutrition label, a recipe, a menu, an app screenshot, or a
-   plated meal). Claude reads it, then you say how much you had (grams,
-   servings, "N of M servings", or % of the plate) and it logs the scaled
-   macros. On desktop you can also paste a screenshot (Ctrl+V).
+5. Add from a photo / screenshot:
+   - "Take photo" opens the camera; "Choose image" picks an existing
+     photo/screenshot; on desktop you can also paste (Ctrl+V).
+     Works on a nutrition label, a recipe, a menu, an app screenshot, or
+     a plated meal.
+   - You then get an optional NOTE box - type things the image can't tell
+     the AI on its own, e.g. "the strawberry one", "I had 2", "the 500 g
+     pack", "just the chicken, no rice" - then "Read image".
+   - Claude reads it; you say how much you had (grams, servings, "N of M
+     servings", or % of the plate); it logs the scaled macros.
    The image is shrunk in the browser before sending (to keep token cost
    down) and is NEVER stored - only the numbers it produced are kept.
 
