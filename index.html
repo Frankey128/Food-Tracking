@@ -294,6 +294,22 @@
     <summary>Settings</summary>
 
     <div class="field">
+      <label class="lbl">Cloud sync (Cloudflare)</label>
+      <input id="cloudUrl" placeholder="https://….workers.dev" autocomplete="off" spellcheck="false">
+      <div class="row" style="margin-top:8px">
+        <input class="grow" id="cloudPw" type="password" placeholder="Backend password" autocomplete="off">
+        <button class="mini ghost" id="cloudShowPw">Show</button>
+      </div>
+      <div class="row wrap" style="margin-top:8px">
+        <button class="mini primary" id="cloudConnect">Connect</button>
+        <button class="mini ghost" id="cloudDisconnect">Disconnect</button>
+      </div>
+      <div class="hint">Enter the same URL and password on every device (phone included) and they sync automatically. Takes priority over the OneDrive file. Leave blank to use the file / manual sync instead.</div>
+    </div>
+
+    <hr>
+
+    <div class="field">
       <label class="lbl">Anthropic API key</label>
       <div class="row">
         <input class="grow" id="apiKey" type="password" placeholder="sk-ant-..." autocomplete="off">
@@ -381,6 +397,7 @@
   const LS_KEY   = "foodTracker.apiKey";
   const LS_SET   = "foodTracker.settings.v1";
   const LS_THEME = "foodTracker.theme";
+  const LS_CLOUD = "foodTracker.cloud.v1";
 
   // localStorage can throw (private mode, locked-down browsers, data: URLs) - fall back to memory.
   let storageOK = true;
@@ -412,6 +429,7 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
     settings: { model:"claude-opus-5", histRange:30, goals:{p:null,f:null,c:null,k:null} },
     fileHandle: null,
     fileFmt: "json",
+    cloud: { url:"", pw:"" },
     editingId: null,
     manualOpen: false,
     pendingRefresh: false,
@@ -472,6 +490,10 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
       if(s.model) state.settings.model = s.model;
       if(s.histRange != null) state.settings.histRange = s.histRange;
       if(s.goals) state.settings.goals = { p:s.goals.p??null, f:s.goals.f??null, c:s.goals.c??null, k:s.goals.k??null };
+    }catch(e){}
+    try{
+      const c = JSON.parse(lsGet(LS_CLOUD)||"{}");
+      if(c && c.url && c.pw) state.cloud = { url:c.url, pw:c.pw };
     }catch(e){}
   }
   function saveLocal(){ lsSet(LS_DATA, JSON.stringify(state.data)); }
@@ -605,8 +627,9 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
   }
 
   function schedulePush(){
-    if(!state.fileHandle) return;
     clearTimeout(pushTimer);
+    if(cloudOn()){ pushTimer = setTimeout(pushToCloud, 700); return; }
+    if(!state.fileHandle) return;
     pushTimer = setTimeout(pushToFile, 700);
   }
   async function pushToFile(){
@@ -649,6 +672,12 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
   function updateSyncPill(justWrote){
     const pill = $("#syncPill");
     const store = $("#storeState");
+    if(cloudOn()){
+      if(cloudError){ pill.className = "pill warn"; pill.textContent = "cloud: " + cloudError; }
+      else { pill.className = "pill on"; pill.textContent = justWrote ? "cloud: saved" : "cloud: on"; }
+      store.textContent = "cloud sync";
+      return;
+    }
     if(!state.fileHandle){
       pill.className = "pill off"; pill.textContent = FSA ? "sync: off" : "sync: manual";
       store.textContent = storageOK ? "stored in this browser" : "⚠ browser storage disabled - data won't persist";
@@ -698,6 +727,82 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
     needsReconnect = false;
     await idbDel("fileHandle");
     updateSyncPill(); render();
+  }
+
+  // ---------- cloud sync (Cloudflare Worker + KV) ----------
+  let cloudError = null;
+  function cloudOn(){ return !!(state.cloud.url && state.cloud.pw); }
+  function cloudFetch(method, body){
+    const url = state.cloud.url.replace(/\/+$/,"") + "/data";
+    const headers = { "Authorization": "Bearer " + state.cloud.pw };
+    if(body) headers["Content-Type"] = "application/json";
+    return fetch(url, { method, headers, body: body || undefined });
+  }
+  async function pullFromCloud(doRender){
+    if(!cloudOn()) return;
+    try{
+      const r = await cloudFetch("GET");
+      if(!r.ok){ cloudError = r.status === 401 ? "bad password" : ("error " + r.status); updateSyncPill(); return; }
+      const incoming = await r.json();
+      cloudError = null;
+      const before = JSON.stringify(state.data);
+      state.data = mergeData(state.data, incoming);
+      if(JSON.stringify(state.data) !== before){
+        saveLocal();
+        if(doRender){
+          if(state.editingId || state.manualOpen){ state.pendingRefresh = true; }
+          render();
+        }
+      }
+    }catch(e){ cloudError = "offline"; }
+    updateSyncPill();
+  }
+  async function pushToCloud(){
+    if(!cloudOn()) return;
+    try{
+      const r = await cloudFetch("PUT", JSON.stringify(state.data));
+      if(!r.ok){ cloudError = r.status === 401 ? "bad password" : ("save failed " + r.status); updateSyncPill(); return; }
+      const merged = await r.json();
+      cloudError = null;
+      const before = JSON.stringify(state.data);
+      state.data = mergeData(state.data, merged);
+      if(JSON.stringify(state.data) !== before){
+        saveLocal();
+        if(!state.editingId && !state.manualOpen) render();
+      }
+      updateSyncPill(true);
+    }catch(e){ cloudError = "offline"; updateSyncPill(); }
+  }
+  async function connectCloud(){
+    const url = ($("#cloudUrl").value||"").trim().replace(/\/+$/,"");
+    const pw = ($("#cloudPw").value||"").trim();
+    if(!/^https:\/\//i.test(url) || !pw){ toast("Enter the https:// URL and the password", true); return; }
+    state.cloud = { url, pw };
+    try{
+      const r = await cloudFetch("GET");
+      if(r.status === 401){ state.cloud = { url:"", pw:"" }; toast("Reached the server, but the password is wrong.", true); return; }
+      if(!r.ok){ state.cloud = { url:"", pw:"" }; toast("Server responded " + r.status, true); return; }
+      const incoming = await r.json();
+      cloudError = null;
+      state.data = mergeData(state.data, incoming);
+      saveLocal();
+      lsSet(LS_CLOUD, JSON.stringify(state.cloud));
+      await pushToCloud();
+      render();
+      toast("Cloud sync connected");
+    }catch(e){
+      state.cloud = { url:"", pw:"" };
+      toast("Couldn't reach that URL. Check it and your connection.", true);
+    }
+  }
+  function disconnectCloud(){
+    state.cloud = { url:"", pw:"" };
+    cloudError = null;
+    lsSet(LS_CLOUD, "");
+    if($("#cloudUrl")) $("#cloudUrl").value = "";
+    if($("#cloudPw")) $("#cloudPw").value = "";
+    updateSyncPill(); render();
+    toast("Cloud sync disconnected");
   }
 
   // ---------- Claude API ----------
@@ -1139,13 +1244,25 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
     };
 
     $("#wipe").onclick = ()=>{
-      if(!confirm("Erase all tracked data on THIS device? If you have a linked/synced data file, its contents will come back on next sync.")) return;
+      if(!confirm("Erase all tracked data on THIS device? If cloud sync or a linked file is set up, its contents will come back on next sync.")) return;
       state.data = { version:1, entries:[] };
       saveLocal(); render(); toast("Local data erased");
     };
 
-    window.addEventListener("focus", ()=> pullFromFile(true));
-    document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) pullFromFile(true); });
+    // cloud sync
+    if(state.cloud.url) $("#cloudUrl").value = state.cloud.url;
+    if(state.cloud.pw) $("#cloudPw").value = state.cloud.pw;
+    $("#cloudShowPw").onclick = ()=>{
+      const f = $("#cloudPw");
+      f.type = f.type === "password" ? "text" : "password";
+      $("#cloudShowPw").textContent = f.type === "password" ? "Show" : "Hide";
+    };
+    $("#cloudConnect").onclick = connectCloud;
+    $("#cloudDisconnect").onclick = disconnectCloud;
+
+    const refresh = ()=> cloudOn() ? pullFromCloud(true) : pullFromFile(true);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) refresh(); });
   }
 
   // ---------- boot ----------
@@ -1154,7 +1271,10 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
     applyTheme(lsGet(LS_THEME) || "dark");
     bind();
     render();
-    if(FSA){
+    if(cloudOn()){
+      updateSyncPill();
+      await pullFromCloud(true);
+    } else if(FSA){
       try{
         const h = await idbGet("fileHandle");
         if(h){
