@@ -182,6 +182,14 @@
   .editgrid .full{grid-column:1/-1}
   .lbl{font-size:11px;color:var(--muted);display:block;margin-bottom:4px;font-weight:500}
 
+  /* photo review */
+  #pr-thumb{max-height:130px;max-width:100%;border-radius:10px;border:1px solid var(--line);display:block;margin-bottom:8px}
+  .pv{font-size:13px;margin-top:10px;display:flex;gap:14px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+  .pv b{font-weight:750;font-size:15px}
+  .prchips{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+  .prchips button{min-height:32px;padding:5px 11px;border-radius:8px;font-size:12px;font-weight:550}
+  .prchips button.on{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+
   /* history */
   .seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:2px;gap:2px}
   .seg button{min-height:28px;padding:4px 10px;border:0;background:transparent;border-radius:7px;font-size:12px;color:var(--muted);font-weight:600}
@@ -276,9 +284,11 @@
       <button class="primary" id="addBtn">Add</button>
     </div>
     <div class="toolbar">
+      <button class="mini ghost" id="photoBtn">📷 Photo / label</button>
       <button class="mini ghost" id="manualToggle">+ Enter macros manually</button>
       <span class="hint" id="addHint"></span>
     </div>
+    <input type="file" id="photoInput" accept="image/*" style="display:none">
 
     <div id="manualForm" style="display:none;margin-top:10px">
       <div class="editgrid">
@@ -293,6 +303,19 @@
         <button class="primary grow" id="mAdd">Add to log</button>
         <button class="ghost" id="mCancel">Cancel</button>
       </div>
+    </div>
+
+    <div id="photoReview" style="display:none;margin-top:10px">
+      <img id="pr-thumb" alt="">
+      <label class="lbl">Item</label><input id="pr-name">
+      <div class="hint" id="pr-detected" style="margin-top:6px"></div>
+      <div id="pr-portionWrap" style="margin-top:10px"></div>
+      <div class="pv" id="pr-preview"></div>
+      <div class="row" style="margin-top:10px">
+        <button class="primary grow" id="pr-add">Add to log</button>
+        <button class="ghost" id="pr-cancel">Cancel</button>
+      </div>
+      <div class="hint" id="pr-note"></div>
     </div>
   </header>
 
@@ -333,7 +356,7 @@
         <option value="claude-sonnet-5">Claude Sonnet 5 &mdash; cheaper</option>
         <option value="claude-haiku-4-5">Claude Haiku 4.5 &mdash; cheapest</option>
       </select>
-      <div class="hint">Each estimate is a tiny request (well under a cent on Opus for a typical meal).</div>
+      <div class="hint">Text estimates are tiny. Photo reads use more &mdash; a shrunk image is ~2&ndash;3k tokens; Haiku 4.5 handles labels well.</div>
     </div>
 
     <div class="field">
@@ -416,6 +439,20 @@ If the text is not food or drink, or is far too vague to estimate at all, return
 Respond with ONLY one JSON object and nothing else (no prose, no code fences), exactly this shape:
 {"ok":true,"item":"<short normalised name>","assumed_qty":"<what you assumed, e.g. '2 slices (~80 g)'>","protein_g":<number>,"fat_g":<number>,"carbs_g":<number>,"kcal":<number>,"note":"<short caveat, or empty string>"}`;
 
+  const SYSTEM_PROMPT_IMG =
+`You read a photo or screenshot of food information for a diet tracker: a nutrition label, a recipe, a menu, an app/website screenshot, or a plated meal.
+Pick the single most relevant food item and give its macros.
+
+Return ONLY one JSON object, no prose or code fences:
+{"ok":true,"title":"<short name>","basis":"per_100g"|"per_serving"|"whole_recipe"|"whole_item","serving_desc":"<e.g. '1 slice', or ''>","servings_total":<number or null>,"grams":<number or null>,"protein_g":<n>,"fat_g":<n>,"carbs_g":<n>,"kcal":<n>,"confidence":"high"|"medium"|"low","note":"<short caveat or ''>"}
+
+Rules:
+- Nutrition panel present: copy its numbers. Use basis "per_serving" (fill serving_desc) or "per_100g" to match what the panel states.
+- Recipe with no panel: estimate the WHOLE recipe total; basis "whole_recipe"; servings_total = the stated yield (or your best guess).
+- Plated meal, or no usable text: estimate the whole plate; basis "whole_item"; set grams; confidence "low" or "medium".
+- protein_g/fat_g/carbs_g/kcal are for the quantity implied by "basis". Round grams and kcal to whole numbers.
+- No food information at all: {"ok":false,"note":"<why>"}.`;
+
   // ---------- state ----------
   const state = {
     data: { version:1, entries:[] },
@@ -426,6 +463,10 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
     manualOpen: false,
     pendingRefresh: false,
     busy: false,
+    photoExtract: null,
+    photoReviewOpen: false,
+    photoPortion: 0,
+    photoThumbUrl: null,
   };
 
   // ---------- date helpers ----------
@@ -586,7 +627,7 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
       qty: e.qty || "",
       protein: round(e.protein), fat: round(e.fat), carbs: round(e.carbs), kcal: round(e.kcal),
       note: e.note || "",
-      source: e.source === "manual" ? "manual" : "ai",
+      source: (e.source === "manual" || e.source === "photo") ? e.source : "ai",
     };
   }
 
@@ -624,7 +665,7 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
       if(JSON.stringify(state.data) !== before){
         saveLocal();
         if(doRender){
-          if(state.editingId || state.manualOpen){ state.pendingRefresh = true; }
+          if(state.editingId || state.manualOpen || state.photoReviewOpen){ state.pendingRefresh = true; }
           render();
         }
       }
@@ -642,7 +683,7 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
       state.data = mergeData(state.data, merged);
       if(JSON.stringify(state.data) !== before){
         saveLocal();
-        if(!state.editingId && !state.manualOpen) render();
+        if(!state.editingId && !state.manualOpen && !state.photoReviewOpen) render();
       }
       updateSyncPill(true);
     }catch(e){ cloudError = "offline"; updateSyncPill(); }
@@ -683,15 +724,15 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
   // Models that accept output_config.effort. Haiku 4.5 rejects it, so it must be omitted there.
   const EFFORT_MODELS = new Set(["claude-opus-5", "claude-sonnet-5"]);
 
-  async function estimate(text){
+  async function callClaude(system, content, maxTokens){
     const key = getKey();
     if(!key) throw new Error("No API key. Open Settings and paste your Anthropic API key.");
     const model = state.settings.model || "claude-opus-5";
     const body = {
       model,
-      max_tokens: 2048,
-      system: [{ type:"text", text:SYSTEM_PROMPT, cache_control:{type:"ephemeral"} }],
-      messages: [{ role:"user", content: text }],
+      max_tokens: maxTokens || 1024,
+      system: [{ type:"text", text:system, cache_control:{type:"ephemeral"} }],
+      messages: [{ role:"user", content }],
     };
     if(EFFORT_MODELS.has(model)) body.output_config = { effort: "low" };
     let res;
@@ -707,20 +748,28 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
         body: JSON.stringify(body),
       });
     }catch(e){
-      throw new Error("Network/CORS error reaching the API. If you opened this file directly (file://), serve it over http instead - see the notes with this app.");
+      throw new Error("Network/CORS error reaching the API.");
     }
     if(!res.ok){
       let msg = "API error "+res.status;
       try{ const j = await res.json(); if(j && j.error && j.error.message) msg += ": "+j.error.message; }catch(e){}
       if(res.status===401) msg = "API key was rejected (401). Check it in Settings.";
+      if(res.status===413) msg = "That image is too large even after shrinking - try a tighter crop.";
       if(res.status===429) msg = "Rate limited (429). Wait a moment and try again.";
       throw new Error(msg);
     }
     const j = await res.json();
     const out = (j.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n").trim();
     const obj = parseLooseJSON(out);
-    if(!obj) throw new Error("Couldn't read the estimate. Reply was: "+out.slice(0,180));
+    if(!obj) throw new Error("Couldn't read the reply: "+out.slice(0,180));
     return obj;
+  }
+  function estimate(text){ return callClaude(SYSTEM_PROMPT, text, 2048); }
+  function estimateImage(b64){
+    return callClaude(SYSTEM_PROMPT_IMG, [
+      { type:"image", source:{ type:"base64", media_type:"image/jpeg", data:b64 } },
+      { type:"text", text:"Extract the food information from this image as specified." },
+    ], 1024);
   }
   function parseLooseJSON(s){
     if(!s) return null;
@@ -789,6 +838,162 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
     setBusy(false);
   }
 
+  // ---------- photo / image extraction ----------
+  async function prepImage(file){
+    const dataUrl = await new Promise((res, rej)=>{
+      const r = new FileReader();
+      r.onload = ()=> res(r.result);
+      r.onerror = ()=> rej(r.error || new Error("read failed"));
+      r.readAsDataURL(file);
+    });
+    const img = await new Promise((res, rej)=>{
+      const i = new Image();
+      i.onload = ()=> res(i);
+      i.onerror = ()=> rej(new Error("decode failed"));
+      i.src = dataUrl;
+    });
+    const MAX = 1568;                               // Anthropic's recommended max edge - bigger buys nothing
+    const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, w, h);   // flatten any transparency; also drops EXIF
+    ctx.drawImage(img, 0, 0, w, h);
+    return c.toDataURL("image/jpeg", 0.82).split(",")[1];  // base64 only, never stored
+  }
+
+  async function addFromPhoto(file){
+    if(!file || state.busy) return;
+    if(!/^image\//.test(file.type || "")){ toast("That's not an image.", true); return; }
+    setBusy(true, "Reading image…");
+    let b64;
+    try{ b64 = await prepImage(file); }
+    catch(e){ toast("Couldn't read that image.", true); setBusy(false); return; }
+    try{
+      const r = await estimateImage(b64);
+      b64 = null;                                   // drop the image bytes immediately
+      if(r.ok === false){ toast(r.note || "No food information found in that image."); setBusy(false); return; }
+      openPhotoReview(r, file);
+    }catch(err){ toast(err.message, true); }
+    setBusy(false);
+  }
+
+  function openPhotoReview(ex, file){
+    ex.protein_g = round(ex.protein_g); ex.fat_g = round(ex.fat_g);
+    ex.carbs_g = round(ex.carbs_g); ex.kcal = round(ex.kcal);
+    ex.servings_total = (+ex.servings_total > 0) ? +ex.servings_total : null;
+    ex.grams = (+ex.grams > 0) ? +ex.grams : null;
+    if(!["per_100g","per_serving","whole_recipe","whole_item"].includes(ex.basis)) ex.basis = "whole_item";
+    state.photoExtract = ex;
+    state.photoReviewOpen = true;
+    state.manualOpen = false; $("#manualForm").style.display = "none";
+
+    if(state.photoThumbUrl){ URL.revokeObjectURL(state.photoThumbUrl); state.photoThumbUrl = null; }
+    const t = $("#pr-thumb");
+    if(file){ state.photoThumbUrl = URL.createObjectURL(file); t.src = state.photoThumbUrl; t.style.display = "block"; }
+    else { t.removeAttribute("src"); t.style.display = "none"; }
+
+    $("#pr-name").value = ex.title || "Food from photo";
+    $("#pr-detected").textContent = describeBasis(ex);
+    $("#pr-note").textContent = [
+      ex.confidence ? "Confidence: " + ex.confidence : "",
+      ex.note || "",
+      "The image itself is not saved."
+    ].filter(Boolean).join("  ·  ");
+    buildPortionUI(ex);
+    $("#photoReview").style.display = "block";
+    $("#photoReview").scrollIntoView({ block:"nearest" });
+  }
+
+  function describeBasis(ex){
+    if(ex.basis === "per_100g") return "Label read - values per 100 g.";
+    if(ex.basis === "per_serving") return "Label read - per serving" + (ex.serving_desc ? " (" + ex.serving_desc + ")" : "") + ".";
+    if(ex.basis === "whole_recipe") return "Recipe read - makes " + (ex.servings_total || "?") + (ex.servings_total === 1 ? " serving." : " servings.");
+    return "Whole-item estimate" + (ex.grams ? " (~" + ex.grams + " g)" : "") + ".";
+  }
+
+  function buildPortionUI(ex){
+    const wrap = $("#pr-portionWrap");
+    let label, unit, def, chips;
+    if(ex.basis === "per_100g"){
+      const base = ex.grams || 100;
+      label = "Grams eaten"; unit = "g"; def = base; chips = [Math.round(base/2), base, base*2];
+    } else if(ex.basis === "per_serving"){
+      label = "Servings eaten" + (ex.serving_desc ? " (" + ex.serving_desc + " each)" : "");
+      unit = ""; def = 1; chips = [0.5, 1, 2];
+    } else if(ex.basis === "whole_recipe"){
+      label = "Servings eaten (recipe makes " + (ex.servings_total || "?") + ")";
+      unit = ""; def = 1; chips = [0.5, 1, 2];
+    } else {
+      label = "How much of it did you eat?"; unit = "%"; def = 100; chips = [25, 50, 75, 100];
+    }
+    state.photoPortion = def;
+    const chipLbl = c => unit === "%" ? c + "%" : unit === "g" ? c + " g" : (c === 0.5 ? "½" : c + "×");
+    wrap.innerHTML =
+      '<label class="lbl">' + esc(label) + '</label>' +
+      '<div class="row" style="gap:8px">' +
+        '<input id="pr-portion" type="number" inputmode="decimal" min="0" step="any" value="' + def + '" style="max-width:130px">' +
+        (unit ? '<span class="muted" style="font-size:13px">' + unit + '</span>' : '') +
+      '</div>' +
+      '<div class="prchips">' + chips.map(c => '<button type="button" data-g="' + c + '">' + chipLbl(c) + '</button>').join("") + '</div>';
+    $("#pr-portion").oninput = ()=>{ state.photoPortion = Math.max(0, +$("#pr-portion").value || 0); markChip(); updatePhotoPreview(); };
+    wrap.querySelector(".prchips").onclick = e=>{
+      const b = e.target.closest("button[data-g]"); if(!b) return;
+      state.photoPortion = +b.dataset.g;
+      $("#pr-portion").value = state.photoPortion;
+      markChip(); updatePhotoPreview();
+    };
+    markChip(); updatePhotoPreview();
+  }
+  function markChip(){
+    const w = $("#pr-portionWrap"); if(!w) return;
+    w.querySelectorAll(".prchips button").forEach(b => b.classList.toggle("on", +b.dataset.g === state.photoPortion));
+  }
+  function photoFactor(ex, p){
+    if(ex.basis === "per_100g") return p / 100;
+    if(ex.basis === "per_serving") return p;
+    if(ex.basis === "whole_recipe") return p / (ex.servings_total || 1);
+    return p / 100;   // whole_item : percent
+  }
+  function updatePhotoPreview(){
+    const ex = state.photoExtract; if(!ex) return;
+    const f = photoFactor(ex, state.photoPortion);
+    const m = { p: round(ex.protein_g * f), f: round(ex.fat_g * f), c: round(ex.carbs_g * f), k: round(ex.kcal * f) };
+    $("#pr-preview").innerHTML =
+      '<span class="m-p"><b>' + m.p + '</b> P</span>' +
+      '<span class="m-f"><b>' + m.f + '</b> F</span>' +
+      '<span class="m-c"><b>' + m.c + '</b> C</span>' +
+      '<span class="m-k"><b>' + m.k + '</b> kcal</span>';
+  }
+  function photoQtyLabel(ex, p){
+    if(ex.basis === "per_100g") return p + " g";
+    if(ex.basis === "per_serving") return (p === 1 ? "1 serving" : p + " servings") + (ex.serving_desc ? " (" + ex.serving_desc + ")" : "");
+    if(ex.basis === "whole_recipe") return p + " of " + (ex.servings_total || "?") + " servings";
+    return p + "% of it";
+  }
+  function confirmPhotoAdd(){
+    const ex = state.photoExtract; if(!ex) return;
+    const p = state.photoPortion, f = photoFactor(ex, p);
+    const name = ($("#pr-name").value || "").trim() || ex.title || "Food from photo";
+    addEntry({
+      id: uid(), date: state.selectedDate, ts: Date.now(), updated: Date.now(),
+      text: "", item: name, qty: photoQtyLabel(ex, p),
+      protein: round(ex.protein_g * f), fat: round(ex.fat_g * f), carbs: round(ex.carbs_g * f), kcal: round(ex.kcal * f),
+      note: ex.note || "", source: "photo",
+    });
+    closePhotoReview();
+    toast("Added " + name);
+  }
+  function closePhotoReview(){
+    state.photoExtract = null;
+    state.photoReviewOpen = false;
+    state.photoPortion = 0;
+    if(state.photoThumbUrl){ URL.revokeObjectURL(state.photoThumbUrl); state.photoThumbUrl = null; }
+    $("#photoReview").style.display = "none";
+  }
+
   function deleteEntry(id){
     const e = state.data.entries.find(x=>x.id===id);
     if(!e) return;
@@ -839,6 +1044,7 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
     $("#addBtn").disabled = b;
     $("#addBtn").innerHTML = b ? '<span class="spin"></span>' : "Add";
     $("#addHint").textContent = b ? (msg||"Working…") : "";
+    const pb = $("#photoBtn"); if(pb) pb.disabled = b;
   }
 
   function historyHtml(){
@@ -966,7 +1172,7 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
     return `<div class="entry">
       <div class="spread">
         <div class="grow">
-          <div class="name">${esc(e.item)} ${e.source==="ai" ? '<span class="badge">AI</span>' : '<span class="badge">manual</span>'}</div>
+          <div class="name">${esc(e.item)} <span class="badge">${e.source==="ai" ? "AI" : e.source==="photo" ? "Photo" : "manual"}</span></div>
           ${qtyHtml ? `<div class="meta">${qtyHtml}</div>` : ""}
         </div>
       </div>
@@ -1061,6 +1267,27 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
       ["mName","mQty","mP","mF","mC","mK"].forEach(id=> $("#"+id).value="");
       toast("Added " + name);
     };
+
+    // photo / image
+    $("#photoBtn").onclick = ()=> $("#photoInput").click();
+    $("#photoInput").onchange = e=>{
+      const f = e.target.files && e.target.files[0];
+      e.target.value = "";
+      if(f) addFromPhoto(f);
+    };
+    $("#pr-add").onclick = confirmPhotoAdd;
+    $("#pr-cancel").onclick = closePhotoReview;
+    document.addEventListener("paste", e=>{
+      if(state.busy || state.photoReviewOpen) return;
+      const items = (e.clipboardData && e.clipboardData.items) || [];
+      for(const it of items){
+        if(it.type && it.type.indexOf("image/") === 0){
+          const f = it.getAsFile();
+          if(f){ e.preventDefault(); addFromPhoto(f); }
+          return;
+        }
+      }
+    });
 
     // event delegation for entry / history / week actions
     $("#view").addEventListener("click", e=>{
