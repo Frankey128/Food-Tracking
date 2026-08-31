@@ -793,10 +793,11 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
 
   async function reestimate(id){
     const e = state.data.entries.find(x=>x.id===id);
-    if(!e || state.busy) return;
+    if(!e || state.busy || !e.item) return;
     setBusy(true, "Re-estimating…");
     try{
-      const r = await estimate(e.text || e.item);
+      // re-estimate from the entry's current name (edit the name to change what it looks up)
+      const r = await estimate(e.item);
       if(r.ok === false){ toast(r.note || "Couldn't estimate that."); }
       else{
         e.item = r.item || e.item; e.qty = r.assumed_qty || e.qty;
@@ -834,7 +835,8 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
   function saveEdit(id){
     const e = state.data.entries.find(x=>x.id===id);
     if(!e) return;
-    e.item = ($("#e-name").value||"").trim() || e.item;
+    const newName = ($("#e-name").value||"").trim();
+    if(newName && newName !== e.item){ e.item = newName; e.text = newName; }  // keep the lookup text in sync with the name
     e.qty = ($("#e-qty").value||"").trim();
     e.protein = round($("#e-p").value);
     e.fat = round($("#e-f").value);
@@ -960,6 +962,7 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
       return `<div class="entry">
         <div class="editgrid">
           <div class="full"><label class="lbl">Name</label><input id="e-name" value="${esc(e.item)}"></div>
+          ${e.source==="ai" ? `<div class="full hint" style="margin-top:-3px">"Re-estimate" looks this name up with AI and replaces the values below.</div>` : ""}
           <div class="full"><label class="lbl">Amount</label><input id="e-qty" value="${esc(e.qty)}"></div>
           <div><label class="lbl">Protein g</label><input id="e-p" type="number" inputmode="decimal" min="0" value="${e.protein}"></div>
           <div><label class="lbl">Fat g</label><input id="e-f" type="number" inputmode="decimal" min="0" value="${e.fat}"></div>
