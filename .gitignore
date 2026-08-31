@@ -1,0 +1,6 @@
+food-data.json
+food-data.csv
+*.json
+!package.json
+.DS_Store
+Thumbs.db
