@@ -1,109 +1,123 @@
-FOOD MACRO TRACKER
-==================
+FRANKEY'S FOOD FUN TIMES
+=======================
 
 A one-file web app for logging what you eat and seeing daily totals of
-protein, fat and carbohydrate (plus calories). Estimates come from the
-Anthropic (Claude) API from a short description you type; you can also
+protein, fat and carbohydrate (plus calories). Macro estimates come from
+the Anthropic (Claude) API from a short description you type; you can also
 enter the numbers by hand.
 
+Live at:  https://frankey128.github.io/Food-Tracking/
+Source:   GitHub repo  Frankey128/Food-Tracking  (this folder is the repo)
+
 Files in this folder:
-  index.html                the app
-  README.txt                this file
-  food-data.json (or .csv)  your data (created the first time you link it)
+  index.html        the whole app
+  worker/worker.js  the Cloudflare Worker that does cross-device sync
+  README.txt        this file
+  robots.txt        keeps the page out of search engines
+  .nojekyll         tells GitHub Pages to serve the file as-is (no build)
+  food-data.json    a local backup, if you've exported one (git-ignored)
 
 
 -------------------------------------------------------------------------
-ON THE PC
+USING IT
 -------------------------------------------------------------------------
 
-1. Double-click index.html. It opens in your default browser.
-   Use Edge or Chrome - the automatic file sync needs one of those.
+1. Open the live URL on any device (PC, phone, tablet). On a phone/tablet:
+   Share -> Add to Home Screen for an app icon.
 
-2. Open "Settings" (near the bottom) and paste an Anthropic API key.
+2. Settings -> paste an Anthropic API key (needed for the AI estimates;
+   manual entry works without one).
    - Get one at https://console.anthropic.com  (API billing is separate
      from a Claude.ai subscription; a card is required).
-   - On the console, set a low monthly spend limit on the key. This app
-     costs well under a cent per day.
-   - The key is stored only in this browser.
+   - Set a low monthly spend limit on the key. This app costs well under
+     a cent a day.
+   - Model dropdown: Opus (best), Sonnet (cheaper), Haiku (cheapest).
 
-3. Still in Settings, under "OneDrive data file" click "New .json file"
-   (or "New .csv file" - see YOUR DATA below) and save it IN THIS FOLDER.
-   From now on the PC reads and writes that file automatically, and
-   OneDrive syncs it to your other devices.
-   (On another PC / a new device, use "Link existing file" and pick it.)
+3. Settings -> Cloud sync -> enter the Worker URL and the backend
+   password, then Connect. Do this on every device with the SAME URL and
+   password. After that, every add/edit/delete syncs automatically.
+   (See CLOUD SYNC below. Without it, data stays on that one device.)
 
 4. Add food: type e.g. "2 slices wholemeal toast with butter, boiled egg"
-   and press Add. Edit any row to correct the numbers.
+   and press Add. Edit any row to fix the numbers. "Re-estimate" on an
+   AI row re-runs the estimate from that row's current name.
 
 MOVING BETWEEN DAYS
-   - The < and > arrows step one day at a time; "Today" jumps back to today.
-   - Tap the date itself to pick any date from a calendar.
-   - The History card at the bottom lists every day you've logged, newest
-     first, with that day's totals and a calorie bar. Use the 7d / 30d /
-     90d / All buttons to change the range; tap a day to open it. The line
-     above the list shows how many days and your averages over the range.
-
-If adding food shows a "network / CORS" error:
-   Some browsers block API calls from a file opened directly off disk.
-   Fix: serve the folder over http instead. If you have the VS Code
-   editor, install its "Live Server" extension, right-click index.html,
-   "Open with Live Server". Any tiny static web server works.
+   - The < and > arrows step one day; "Today" jumps back to today.
+   - Tap the date to pick any date from a calendar.
+   - The selected day's totals show in the header, under the date.
+   - The History card lists every day you've logged, newest first, with
+     that day's totals and a calorie bar. 7d / 30d / 90d / All changes
+     the range; tap a day to open it; the line above shows the averages.
 
 
 -------------------------------------------------------------------------
-ON THE iPad
+CLOUD SYNC  (Cloudflare Worker + KV)
 -------------------------------------------------------------------------
 
-iPad browsers can't open a local HTML file from OneDrive, and can't write
-files back to OneDrive. Two ways to deal with that:
+worker/worker.js is deployed as a Cloudflare Worker (via the Cloudflare
+dashboard - paste the file into the Worker's code editor and Deploy).
 
-A. Host the page (it's on GitHub Pages, from the Food-Tracking repo):
-   Open the Pages URL on the iPad, then Share -> Add to Home Screen so it
-   runs full-screen like an app. Paste the same API key into Settings
-   there. Your data still lives in OneDrive as your data file.
-   To publish a change: git push - GitHub Pages redeploys in about a minute.
+It needs:
+  - a KV namespace bound to the variable name  LOG
+  - a secret  APP_PASSWORD  (the password you type into the app)
 
-B. Just use it on the PC for now and add the iPad later.
+Endpoints (both require  Authorization: Bearer <APP_PASSWORD> ):
+  GET  /data   returns the whole log
+  PUT  /data   merges the posted log into the stored one (by entry id +
+               "updated" timestamp, tombstones respected) and returns it
 
-Syncing the iPad's entries (until/unless you move to Microsoft sign-in):
-   - After logging on the iPad: Settings -> "Copy all data", then paste
-     that text into your data file in the OneDrive app (or email it to
-     yourself).
-   - On the PC: Settings -> paste it into "Paste data here to merge it
-     in" -> "Merge pasted data". (Import / paste accept JSON or CSV.)
-   - It merges entry by entry, so the two devices never overwrite each
-     other. Order doesn't matter.
-   - Simplest habit: log wherever you are, and merge once a day at the PC.
+Because merging happens on the server, two devices saving at the same
+time can't lose each other's entries. If the site URL changes, edit
+ALLOWED_ORIGINS at the top of worker.js.
 
 
 -------------------------------------------------------------------------
 YOUR DATA
 -------------------------------------------------------------------------
 
-Your data file grows forever - the app never trims old entries, and the
-History card can show all of it. It is plain text you can read and back up.
+The log grows forever - the app never trims old entries, and History can
+show all of it. Settings -> Export & backup gives you:
 
-JSON  - one object, an "entries" array. Best if you never open the file
-        yourself. Example entry:
-          { "id": "...", "date": "2026-08-30", "item": "Toast with butter",
-            "qty": "2 slices (~80 g)", "protein": 9, "fat": 12, "carbs": 30,
-            "kcal": 260, "source": "ai", "deleted": false, "updated": 1693... }
+  Download .json  - one object with an "entries" array. Example entry:
+                      { "id":"...", "date":"2026-08-30",
+                        "item":"Toast with butter", "qty":"2 slices (~80 g)",
+                        "protein":9, "fat":12, "carbs":30, "kcal":260,
+                        "source":"ai", "deleted":false, "updated":1693... }
 
-CSV   - one row per entry, with a header line. Opens straight into Excel
-        or Google Sheets so you can chart / pivot it yourself. Columns:
-          id,date,ts,updated,deleted,source,item,qty,text,protein,fat,carbs,kcal,note
+  Download .csv   - one row per entry, header line first. Opens straight
+                    into Excel / Google Sheets. Columns:
+                      id,date,ts,updated,deleted,source,item,qty,text,
+                      protein,fat,carbs,kcal,note
 
-Pick whichever when you create the file. The app reads either format and,
-for a linked file, writes back in that file's format. "Download .json" and
-"Download .csv" in Settings export a snapshot in either format at any time.
+  Copy to clipboard - the JSON, for pasting elsewhere.
+
+Import / restore takes a .json or .csv file (or pasted text) and merges
+it in by entry, so re-importing a backup never creates duplicates.
 
 If you edit the CSV in Excel: keep the "date" column formatted as TEXT.
-Excel likes to turn "2026-08-30" into its own date format or a serial
-number, and the app expects the plain YYYY-MM-DD string.
+Excel turns "2026-08-30" into its own date format or a serial number, and
+the app expects the plain YYYY-MM-DD string.
 
 Deleting a row keeps it with deleted = true (a "1" in the CSV) so the
-deletion also syncs. "Erase all data on this device" only clears this
-browser; a synced file restores it on the next sync.
+deletion syncs too. "Erase all data on this device" only clears that
+browser; if cloud sync is on, it comes back on the next sync.
 
-Nothing leaves your devices except the food description you type, which
-is sent to the Anthropic API to produce an estimate.
+Nothing leaves your devices except the food text you type, which goes to
+the Anthropic API for the estimate, and your log, which goes to your own
+Cloudflare Worker when cloud sync is on.
+
+
+-------------------------------------------------------------------------
+PUBLISHING A CHANGE
+-------------------------------------------------------------------------
+
+Edit index.html, then:
+
+  git -C "<this folder>" add index.html
+  git -C "<this folder>" commit -m "..."
+  git -C "<this folder>" push origin main
+
+GitHub Pages redeploys in about a minute. Hard-refresh (Ctrl+Shift+R).
+If you changed worker/worker.js, also paste it into the Cloudflare Worker
+editor and Deploy.

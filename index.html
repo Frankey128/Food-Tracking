@@ -312,7 +312,7 @@
         <button class="mini primary" id="cloudConnect">Connect</button>
         <button class="mini ghost" id="cloudDisconnect">Disconnect</button>
       </div>
-      <div class="hint">Enter the same URL and password on every device (phone included) and they sync automatically. Takes priority over the OneDrive file. Leave blank to use the file / manual sync instead.</div>
+      <div class="hint">Enter the same URL and password on every device &mdash; phone included &mdash; and every add, edit and delete syncs automatically. Leave blank to keep data on this device only.</div>
     </div>
 
     <hr>
@@ -353,36 +353,22 @@
     <hr>
 
     <div class="field">
-      <label class="lbl">OneDrive data file</label>
-      <div id="fsaSupported" style="display:none">
-        <div class="row wrap">
-          <button class="mini" id="linkFile">Link existing file</button>
-          <button class="mini" id="createJson">New .json file</button>
-          <button class="mini" id="createCsv">New .csv file</button>
-          <button class="mini ghost" id="unlinkFile">Unlink</button>
-        </div>
-        <div class="hint">Pick (or create) a file inside your OneDrive folder. This device then reads &amp; writes it automatically; OneDrive syncs it to your other devices. JSON or CSV both work &mdash; the app reads either and writes back in the same format as the file you link.</div>
+      <label class="lbl">Export &amp; backup</label>
+      <div class="row wrap">
+        <button class="mini primary" id="exportJson">Download .json</button>
+        <button class="mini primary" id="exportCsv">Download .csv</button>
+        <button class="mini" id="copyJson">Copy to clipboard</button>
       </div>
-      <div id="fsaUnsupported" style="display:none">
-        <div class="hint">This browser can't write files directly (normal on iPad). Use the manual sync buttons below.</div>
-      </div>
+      <div class="hint">Downloads your complete log &mdash; every entry, all dates. CSV opens straight into Excel or Google Sheets.</div>
     </div>
 
     <div class="field">
-      <label class="lbl">Manual sync (use on iPad)</label>
-      <div class="row wrap">
-        <button class="mini" id="copyJson">Copy all data</button>
-        <button class="mini" id="importFile">Import file&hellip;</button>
-        <button class="mini" id="exportJson">Download .json</button>
-        <button class="mini" id="exportCsv">Download .csv</button>
-        <input type="file" id="importInput" accept=".json,.csv,application/json,text/csv" style="display:none">
-      </div>
-      <div class="hint">On the iPad: <b>Copy all data</b>, paste it into the OneDrive file (or send it to yourself), then <b>Merge</b> it on the other device below. Import and merge auto-detect JSON or CSV.</div>
-    </div>
-    <div class="field">
-      <label class="lbl">Paste data here to merge it in</label>
-      <textarea id="pasteBox" rows="3" placeholder="Paste JSON or CSV&hellip;"></textarea>
-      <button class="mini" id="pasteLoad" style="margin-top:6px">Merge pasted data</button>
+      <label class="lbl">Import / restore</label>
+      <button class="mini" id="importFile">Import a file&hellip;</button>
+      <input type="file" id="importInput" accept=".json,.csv,application/json,text/csv" style="display:none">
+      <textarea id="pasteBox" rows="3" placeholder="&hellip;or paste JSON / CSV here" style="margin-top:8px"></textarea>
+      <button class="mini" id="pasteLoad" style="margin-top:6px">Merge in</button>
+      <div class="hint">Merges by entry, so re-importing a backup won't create duplicates. Accepts JSON or CSV.</div>
     </div>
 
     <hr>
@@ -435,8 +421,6 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
     data: { version:1, entries:[] },
     selectedDate: todayStr(),
     settings: { model:"claude-opus-5", histRange:30, goals:{p:null,f:null,c:null,k:null} },
-    fileHandle: null,
-    fileFmt: "json",
     cloud: { url:"", pw:"" },
     editingId: null,
     manualOpen: false,
@@ -573,82 +557,11 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
     return fmt === "csv" ? toCSV() : JSON.stringify(state.data, null, 2);
   }
 
-  // ---------- IndexedDB (persist the file handle) ----------
-  function idb(){
-    return new Promise((res,rej)=>{
-      const r = indexedDB.open("foodTracker",1);
-      r.onupgradeneeded = () => r.result.createObjectStore("kv");
-      r.onsuccess = () => res(r.result);
-      r.onerror = () => rej(r.error);
-    });
-  }
-  async function idbSet(k,v){
-    const db = await idb();
-    return new Promise((res,rej)=>{ const t=db.transaction("kv","readwrite"); t.objectStore("kv").put(v,k); t.oncomplete=()=>res(); t.onerror=()=>rej(t.error); });
-  }
-  async function idbGet(k){
-    const db = await idb();
-    return new Promise((res,rej)=>{ const t=db.transaction("kv","readonly"); const q=t.objectStore("kv").get(k); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); });
-  }
-  async function idbDel(k){
-    const db = await idb();
-    return new Promise((res,rej)=>{ const t=db.transaction("kv","readwrite"); t.objectStore("kv").delete(k); t.oncomplete=()=>res(); t.onerror=()=>rej(t.error); });
-  }
-
-  // ---------- File System Access sync ----------
-  const FSA = typeof window.showOpenFilePicker === "function";
+  // ---------- sync scheduling ----------
   let pushTimer = null;
-  let needsReconnect = false;
-
-  function fmtFromName(name){ return /\.csv$/i.test(name || "") ? "csv" : "json"; }
-
-  async function ensurePerm(handle, mode="readwrite"){
-    try{
-      const opts = { mode };
-      if((await handle.queryPermission(opts)) === "granted") return true;
-      if((await handle.requestPermission(opts)) === "granted") return true;
-    }catch(e){ console.warn("perm", e); }
-    return false;
-  }
-
-  async function pullFromFile(doRender){
-    if(!state.fileHandle) return;
-    if(!(await ensurePerm(state.fileHandle))){ needsReconnect = true; updateSyncPill(); return; }
-    needsReconnect = false;
-    try{
-      const file = await state.fileHandle.getFile();
-      const txt = (await file.text()).trim();
-      if(txt){
-        const incoming = parseData(txt);
-        const before = JSON.stringify(state.data);
-        state.data = mergeData(state.data, incoming);
-        if(JSON.stringify(state.data) !== before){
-          saveLocal();
-          if(doRender){
-            if(state.editingId || state.manualOpen){ state.pendingRefresh = true; }
-            render();
-          }
-        }
-      }
-    }catch(e){ console.warn("pull", e); }
-    updateSyncPill();
-  }
-
   function schedulePush(){
     clearTimeout(pushTimer);
-    if(cloudOn()){ pushTimer = setTimeout(pushToCloud, 700); return; }
-    if(!state.fileHandle) return;
-    pushTimer = setTimeout(pushToFile, 700);
-  }
-  async function pushToFile(){
-    if(!state.fileHandle) return;
-    if(!(await ensurePerm(state.fileHandle))){ needsReconnect = true; updateSyncPill(); return; }
-    try{
-      const w = await state.fileHandle.createWritable();
-      await w.write(serialize(state.fileFmt));
-      await w.close();
-      updateSyncPill(true);
-    }catch(e){ console.warn("push", e); toast("Could not write data file: "+e.message, true); }
+    if(cloudOn()) pushTimer = setTimeout(pushToCloud, 700);
   }
 
   function mergeData(a, b){
@@ -686,55 +599,8 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
       store.textContent = "cloud sync";
       return;
     }
-    if(!state.fileHandle){
-      pill.className = "pill off"; pill.textContent = FSA ? "sync: off" : "sync: manual";
-      store.textContent = storageOK ? "stored in this browser" : "⚠ browser storage disabled - data won't persist";
-      return;
-    }
-    if(needsReconnect){
-      pill.className = "pill warn"; pill.textContent = "sync: reconnect";
-    }else{
-      pill.className = "pill on"; pill.textContent = justWrote ? "sync: saved" : "sync: on";
-    }
-    store.textContent = "linked: " + (state.fileHandle.name || ("data." + state.fileFmt));
-  }
-
-  async function linkFile(create, fmt){
-    try{
-      let handle;
-      if(create){
-        fmt = fmt === "csv" ? "csv" : "json";
-        handle = await window.showSaveFilePicker({
-          suggestedName: "food-data." + fmt,
-          types: fmt === "csv"
-            ? [{description:"CSV", accept:{"text/csv":[".csv"]}}]
-            : [{description:"JSON", accept:{"application/json":[".json"]}}],
-        });
-      }else{
-        [handle] = await window.showOpenFilePicker({
-          types:[{description:"Data file", accept:{"application/json":[".json"], "text/csv":[".csv"]}}],
-          multiple:false,
-        });
-      }
-      state.fileHandle = handle;
-      state.fileFmt = fmtFromName(handle.name);
-      await idbSet("fileHandle", handle);
-      await ensurePerm(handle);
-      await pullFromFile(false);
-      await pushToFile();
-      updateSyncPill();
-      render();
-      toast("Linked " + (handle.name || "data file"));
-    }catch(e){
-      if(e && e.name === "AbortError") return;
-      toast("Could not link file: "+e.message, true);
-    }
-  }
-  async function unlinkFile(){
-    state.fileHandle = null;
-    needsReconnect = false;
-    await idbDel("fileHandle");
-    updateSyncPill(); render();
+    pill.className = "pill off"; pill.textContent = "not syncing";
+    store.textContent = storageOK ? "stored on this device" : "⚠ browser storage disabled - data won't persist";
   }
 
   // ---------- cloud sync (Cloudflare Worker + KV) ----------
@@ -1141,8 +1007,8 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
     setTimeout(()=>URL.revokeObjectURL(url), 1000);
   }
   async function copyAll(){
-    try{ await navigator.clipboard.writeText(serialize(state.fileFmt)); toast("Data copied to clipboard"); }
-    catch(e){ toast("Copy failed - select the paste box text manually", true); }
+    try{ await navigator.clipboard.writeText(serialize("json")); toast("Data copied to clipboard"); }
+    catch(e){ toast("Copy failed", true); }
   }
   function mergeIncoming(obj, label){
     if(!obj || !Array.isArray(obj.entries)) { toast("That doesn't look like tracker data", true); return; }
@@ -1232,15 +1098,6 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
       toast("Settings saved");
     };
 
-    $("#fsaSupported").style.display = FSA ? "block" : "none";
-    $("#fsaUnsupported").style.display = FSA ? "none" : "block";
-    if(FSA){
-      $("#linkFile").onclick = ()=> linkFile(false);
-      $("#createJson").onclick = ()=> linkFile(true, "json");
-      $("#createCsv").onclick = ()=> linkFile(true, "csv");
-      $("#unlinkFile").onclick = unlinkFile;
-    }
-
     $("#exportJson").onclick = ()=> downloadFile("json");
     $("#exportCsv").onclick = ()=> downloadFile("csv");
     $("#copyJson").onclick = copyAll;
@@ -1258,7 +1115,7 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
     };
 
     $("#wipe").onclick = ()=>{
-      if(!confirm("Erase all tracked data on THIS device? If cloud sync or a linked file is set up, its contents will come back on next sync.")) return;
+      if(!confirm("Erase all tracked data on THIS device? If cloud sync is set up, it comes back on the next sync.")) return;
       state.data = { version:1, entries:[] };
       saveLocal(); render(); toast("Local data erased");
     };
@@ -1274,9 +1131,8 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
     $("#cloudConnect").onclick = connectCloud;
     $("#cloudDisconnect").onclick = disconnectCloud;
 
-    const refresh = ()=> cloudOn() ? pullFromCloud(true) : pullFromFile(true);
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) refresh(); });
+    window.addEventListener("focus", ()=>{ if(cloudOn()) pullFromCloud(true); });
+    document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && cloudOn()) pullFromCloud(true); });
   }
 
   // ---------- boot ----------
@@ -1288,24 +1144,6 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
     if(cloudOn()){
       updateSyncPill();
       await pullFromCloud(true);
-    } else if(FSA){
-      try{
-        const h = await idbGet("fileHandle");
-        if(h){
-          state.fileHandle = h;
-          state.fileFmt = fmtFromName(h.name);
-          updateSyncPill();
-          if((await h.queryPermission({mode:"readwrite"})) === "granted"){
-            await pullFromFile(true);
-          }else{
-            needsReconnect = true; updateSyncPill();
-            const pill = $("#syncPill");
-            pill.style.cursor = "pointer";
-            pill.title = "Tap to reconnect the data file";
-            pill.onclick = async ()=>{ if(await ensurePerm(h)){ needsReconnect=false; await pullFromFile(true); toast("Reconnected"); } };
-          }
-        }
-      }catch(e){ console.warn("boot fsa", e); }
     }
     updateSyncPill();
   }
