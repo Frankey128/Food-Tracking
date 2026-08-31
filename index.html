@@ -9,11 +9,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Macros">
-<title>Food Macro Tracker</title>
+<meta name="apple-mobile-web-app-title" content="Food Fun">
+<title>Frankey's Food Fun Times</title>
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%237c5cff'/%3E%3Ctext x='90' y='128' font-size='110' text-anchor='middle' fill='white' font-family='Arial'%3E%F0%9F%8D%B4%3C/text%3E%3C/svg%3E">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext x='0' y='26' font-size='26'%3E%F0%9F%8D%B4%3C/text%3E%3C/svg%3E">
-<link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22Food%20Macro%20Tracker%22%2C%22short_name%22%3A%22Macros%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230b0c10%22%2C%22theme_color%22%3A%22%237c5cff%22%2C%22start_url%22%3A%22.%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22data%3Aimage%2Fsvg%2Bxml%2C%253Csvg%2520xmlns%253D%2527http%253A%252F%252Fwww.w3.org%252F2000%252Fsvg%2527%2520viewBox%253D%25270%25200%2520180%2520180%2527%253E%253Crect%2520width%253D%2527180%2527%2520height%253D%2527180%2527%2520rx%253D%252740%2527%2520fill%253D%2527%25237c5cff%2527%252F%253E%253Ctext%2520x%253D%252790%2527%2520y%253D%2527128%2527%2520font-size%253D%2527110%2527%2520text-anchor%253D%2527middle%2527%2520fill%253D%2527white%2527%2520font-family%253D%2527Arial%2527%253E%25F0%259F%258D%25B4%253C%252Ftext%253E%253C%252Fsvg%253E%22%2C%22sizes%22%3A%22any%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
+<link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22Frankey%27s%20Food%20Fun%20Times%22%2C%22short_name%22%3A%22Food%20Fun%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230b0c10%22%2C%22theme_color%22%3A%22%237c5cff%22%2C%22start_url%22%3A%22.%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22data%3Aimage%2Fsvg%2Bxml%2C%253Csvg%2520xmlns%253D%2527http%253A%252F%252Fwww.w3.org%252F2000%252Fsvg%2527%2520viewBox%253D%25270%25200%2520180%2520180%2527%253E%253Crect%2520width%253D%2527180%2527%2520height%253D%2527180%2527%2520rx%253D%252740%2527%2520fill%253D%2527%25237c5cff%2527%252F%253E%253Ctext%2520x%253D%252790%2527%2520y%253D%2527128%2527%2520font-size%253D%2527110%2527%2520text-anchor%253D%2527middle%2527%2520fill%253D%2527white%2527%2520font-family%253D%2527Arial%2527%253E%25F0%259F%258D%25B4%253C%252Ftext%253E%253C%252Fsvg%253E%22%2C%22sizes%22%3A%22any%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
 <style>
   :root{
     color-scheme:dark;
@@ -142,6 +142,12 @@
   #prevDay,#nextDay{width:40px;padding:0;border-radius:50%;font-size:12px}
   #datePick{position:absolute;left:50%;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none}
 
+  .daytot{
+    display:flex;gap:16px;flex-wrap:wrap;justify-content:center;align-items:baseline;
+    margin-top:11px;font-size:13px;font-variant-numeric:tabular-nums;
+  }
+  .daytot b{font-weight:750;font-size:15px}
+
   .addrow{display:flex;gap:8px;margin-top:12px}
   .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
 
@@ -246,7 +252,7 @@
   <header class="card">
     <div class="spread">
       <div>
-        <h1>Food Macro Tracker</h1>
+        <h1>Frankey's Food Fun Times</h1>
         <span class="sub" id="storeState">local only</span>
       </div>
       <div class="row" style="gap:8px">
@@ -262,6 +268,8 @@
       <button class="mini ghost" id="todayBtn">Today</button>
       <input type="date" id="datePick" tabindex="-1" aria-hidden="true">
     </div>
+
+    <div class="daytot" id="dayTotBar"></div>
 
     <div class="addrow">
       <input class="grow" id="foodText" placeholder="e.g. 2 slices wholemeal toast with butter" autocomplete="off" enterkeyhint="done">
@@ -1022,6 +1030,12 @@ Respond with ONLY one JSON object and nothing else (no prose, no code fences), e
 
     const g = state.settings.goals;
     const t = dayTotals(state.selectedDate);
+
+    $("#dayTotBar").innerHTML =
+      `<span class="m-p"><b>${t.p}</b> P</span>` +
+      `<span class="m-f"><b>${t.f}</b> F</span>` +
+      `<span class="m-c"><b>${t.c}</b> C</span>` +
+      `<span class="m-k"><b>${t.k}</b> kcal</span>`;
     const softMax = {p:150,f:90,c:300,k:2400};
     function totCell(cls, lab, val, unit, goal){
       const denom = goal || softMax[cls];
