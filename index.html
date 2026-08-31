@@ -284,11 +284,13 @@
       <button class="primary" id="addBtn">Add</button>
     </div>
     <div class="toolbar">
-      <button class="mini ghost" id="photoBtn">📷 Photo / label</button>
+      <button class="mini ghost" id="photoCamBtn">📷 Take photo</button>
+      <button class="mini ghost" id="photoLibBtn">🖼 Choose image</button>
       <button class="mini ghost" id="manualToggle">+ Enter macros manually</button>
       <span class="hint" id="addHint"></span>
     </div>
-    <input type="file" id="photoInput" accept="image/*" style="display:none">
+    <input type="file" id="photoCamInput" accept="image/*" capture="environment" style="display:none">
+    <input type="file" id="photoLibInput" accept="image/*" style="display:none">
 
     <div id="manualForm" style="display:none;margin-top:10px">
       <div class="editgrid">
@@ -1044,7 +1046,7 @@ Rules:
     $("#addBtn").disabled = b;
     $("#addBtn").innerHTML = b ? '<span class="spin"></span>' : "Add";
     $("#addHint").textContent = b ? (msg||"Working…") : "";
-    const pb = $("#photoBtn"); if(pb) pb.disabled = b;
+    ["#photoCamBtn","#photoLibBtn"].forEach(id=>{ const el = $(id); if(el) el.disabled = b; });
   }
 
   function historyHtml(){
@@ -1269,12 +1271,15 @@ Rules:
     };
 
     // photo / image
-    $("#photoBtn").onclick = ()=> $("#photoInput").click();
-    $("#photoInput").onchange = e=>{
+    const onPick = e=>{
       const f = e.target.files && e.target.files[0];
       e.target.value = "";
       if(f) addFromPhoto(f);
     };
+    $("#photoCamBtn").onclick = ()=> $("#photoCamInput").click();
+    $("#photoLibBtn").onclick = ()=> $("#photoLibInput").click();
+    $("#photoCamInput").onchange = onPick;
+    $("#photoLibInput").onchange = onPick;
     $("#pr-add").onclick = confirmPhotoAdd;
     $("#pr-cancel").onclick = closePhotoReview;
     document.addEventListener("paste", e=>{
