@@ -39,8 +39,15 @@ USING IT
    (See CLOUD SYNC below. Without it, data stays on that one device.)
 
 4. Add food: type e.g. "2 slices wholemeal toast with butter, boiled egg"
-   and press Add. Edit any row to fix the numbers. "Re-estimate" on an
-   AI row re-runs the estimate from that row's current name.
+   and press Add.
+   - If you give no amount, the AI assumes ONE STANDARD ADULT PORTION.
+   - Each AI row keeps a "Portion (g)" - the assumed weight. Open Edit and
+     change it and the protein/fat/carbs/kcal rescale to match. All of it
+     is still editable by hand.
+   - The AI often tidies the name; Edit shows "Your original text" so what
+     you actually typed is kept (and shown on the row as  typed: "...").
+   - "Re-estimate" on an AI row re-runs the estimate from the row's
+     current name.
 
 5. Add from a photo / screenshot:
    - "Take photo" opens the camera; "Choose image" picks an existing
@@ -100,8 +107,10 @@ show all of it. Settings -> Export & backup gives you:
 
   Download .csv   - one row per entry, header line first. Opens straight
                     into Excel / Google Sheets. Columns:
-                      id,date,ts,updated,deleted,source,item,qty,text,
-                      protein,fat,carbs,kcal,note
+                      id,date,ts,updated,deleted,source,item,qty,grams,
+                      text,protein,fat,carbs,kcal,note
+                    ("grams" = assumed portion weight; "text" = what you
+                    originally typed.)
 
   Copy to clipboard - the JSON, for pasting elsewhere.
 
