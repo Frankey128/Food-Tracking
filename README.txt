@@ -41,13 +41,16 @@ USING IT
 4. Add food: type e.g. "2 slices wholemeal toast with butter, boiled egg"
    and press Add.
    - If you give no amount, the AI assumes ONE STANDARD ADULT PORTION.
-   - Each AI row keeps a "Portion (g)" - the assumed weight. Open Edit and
-     change it and the protein/fat/carbs/kcal rescale to match. All of it
-     is still editable by hand.
+   - Each AI row keeps a "Portion (g)" - the assumed weight, shown on the
+     row. Open Edit, change it, and protein/fat/carbs/kcal rescale to
+     match (from the value it opened with; for older entries it reads the
+     baseline out of the "Amount" text). No AI call - it's just maths.
    - The AI often tidies the name; Edit shows "Your original text" so what
      you actually typed is kept (and shown on the row as  typed: "...").
-   - "Re-estimate" on an AI row re-runs the estimate from the row's
-     current name.
+   - "Re-estimate" now lives INSIDE the Edit form. It stays greyed out
+     until you change the Name or Amount, then it re-runs the AI (on name
+     + amount) and fills the fields - nothing is saved until you press
+     Save, so it can't wipe your other edits. Save shows a "Saved" toast.
 
 5. Add from a photo / screenshot:
    - "Take photo" opens the camera; "Choose image" picks an existing

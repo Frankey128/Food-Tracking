@@ -479,6 +479,7 @@ Rules:
     settings: { model:"claude-opus-5", histRange:30, goals:{p:null,f:null,c:null,k:null} },
     cloud: { url:"", pw:"" },
     editingId: null,
+    editBase: null,
     manualOpen: false,
     pendingRefresh: false,
     busy: false,
@@ -687,8 +688,8 @@ Rules:
       if(JSON.stringify(state.data) !== before){
         saveLocal();
         if(doRender){
-          if(state.editingId || state.manualOpen || state.photoReviewOpen || state.photoHintOpen){ state.pendingRefresh = true; }
-          render();
+          if(state.editingId){ state.pendingRefresh = true; }   // don't blow away an open edit form
+          else render();
         }
       }
     }catch(e){ cloudError = "offline"; }
@@ -842,24 +843,56 @@ Rules:
     setBusy(false);
   }
 
-  async function reestimate(id){
-    const e = state.data.entries.find(x=>x.id===id);
-    if(!e || state.busy || !e.item) return;
+  // In-form "Re-estimate": re-run the AI on the current name + amount and fill the edit
+  // fields (nothing is committed until Save). Only reachable when name/amount changed.
+  async function redoInForm(){
+    if(state.busy || !state.editingId) return;
+    const name = ($("#e-name").value || "").trim();
+    if(!name) return;
+    const amt = ($("#e-qty").value || "").trim();
+    const btn = $("#e-redo");
+    if(btn){ btn.disabled = true; btn.textContent = "…"; }
     setBusy(true, "Re-estimating…");
     try{
-      // re-estimate from the entry's current name (edit the name to change what it looks up)
-      const r = await estimate(e.item);
+      const r = await estimate(amt ? (name + ", " + amt) : name);
       if(r.ok === false){ toast(r.note || "Couldn't estimate that."); }
       else{
-        e.item = r.item || e.item; e.qty = r.assumed_qty || e.qty;
-        e.grams = (+r.portion_g > 0) ? Math.round(+r.portion_g) : e.grams;
-        e.protein = round(r.protein_g); e.fat = round(r.fat_g); e.carbs = round(r.carbs_g); e.kcal = round(r.kcal);
-        e.note = r.note || ""; e.updated = Date.now();
-        commit();
-        toast("Updated " + e.item);
+        const g = (+r.portion_g > 0) ? Math.round(+r.portion_g) : null;
+        const p = round(r.protein_g), f = round(r.fat_g), c = round(r.carbs_g), k = round(r.kcal);
+        if($("#e-qty")) $("#e-qty").value = r.assumed_qty || amt;
+        if($("#e-g")) $("#e-g").value = g == null ? "" : g;
+        if($("#e-p")) $("#e-p").value = p;
+        if($("#e-f")) $("#e-f").value = f;
+        if($("#e-c")) $("#e-c").value = c;
+        if($("#e-k")) $("#e-k").value = k;
+        if(state.editBase){
+          state.editBase.name = name;
+          state.editBase.qty = r.assumed_qty || amt;
+          state.editBase.grams = g;
+          state.editBase.protein = p; state.editBase.fat = f; state.editBase.carbs = c; state.editBase.kcal = k;
+        }
+        toast("Re-estimated - review and Save");
       }
     }catch(err){ toast(err.message, true); }
     setBusy(false);
+    const b2 = $("#e-redo");
+    if(b2){ b2.textContent = "Re-estimate"; refreshRedoState(); }
+  }
+
+  function refreshRedoState(){
+    const btn = $("#e-redo"); if(!btn) return;
+    const base = state.editBase;
+    const changed = !!base && (
+      ($("#e-name").value || "").trim() !== (base.name || "").trim() ||
+      ($("#e-qty").value  || "").trim() !== (base.qty  || "").trim()
+    );
+    btn.disabled = !changed;
+  }
+
+  // pull a "... N g" figure out of an amount string, for a rescale baseline on older entries
+  function gramsFromText(s){
+    const m = String(s || "").match(/(\d+(?:\.\d+)?)\s*g\b/i);
+    return m ? Math.round(parseFloat(m[1])) : null;
   }
 
   // ---------- photo / image extraction ----------
@@ -1087,7 +1120,7 @@ Rules:
 
   function saveEdit(id){
     const e = state.data.entries.find(x=>x.id===id);
-    if(!e) return;
+    if(!e){ state.editingId = null; state.editBase = null; return; }
     const newName = ($("#e-name").value||"").trim();
     if(newName) e.item = newName;
     if($("#e-orig")) e.text = ($("#e-orig").value||"").trim();
@@ -1099,20 +1132,35 @@ Rules:
     e.kcal = round($("#e-k").value);
     e.updated = Date.now();
     state.editingId = null;
+    state.editBase = null;
     commit();
+    toast("Saved");
   }
 
-  // Changing "Portion (g)" in the edit form rescales the macro inputs from the entry's stored baseline.
+  function openEdit(id){
+    const e = state.data.entries.find(x=>x.id===id);
+    state.editingId = id;
+    state.editBase = e ? {
+      name: e.item || "",
+      qty: e.qty || "",
+      grams: (e.grams > 0 ? e.grams : gramsFromText(e.qty)),
+      protein: e.protein, fat: e.fat, carbs: e.carbs, kcal: e.kcal,
+    } : null;
+    render();
+  }
+  function closeEdit(){ state.editingId = null; state.editBase = null; render(); }
+
+  // "Portion (g)" in the edit form rescales the macro inputs from the baseline snapped when Edit opened.
   function rescaleEditMacros(){
-    const e = state.data.entries.find(x=>x.id===state.editingId);
-    if(!e || !(e.grams > 0)) return;
+    const base = state.editBase;
+    if(!base || !(base.grams > 0)) return;
     const g = +$("#e-g").value || 0;
     if(g <= 0) return;
-    const f = g / e.grams;
-    $("#e-p").value = round(e.protein * f);
-    $("#e-f").value = round(e.fat * f);
-    $("#e-c").value = round(e.carbs * f);
-    $("#e-k").value = round(e.kcal * f);
+    const f = g / base.grams;
+    $("#e-p").value = round(base.protein * f);
+    $("#e-f").value = round(base.fat * f);
+    $("#e-c").value = round(base.carbs * f);
+    $("#e-k").value = round(base.kcal * f);
   }
 
   function uid(){
@@ -1237,30 +1285,33 @@ Rules:
       return `<div class="entry">
         <div class="editgrid">
           <div class="full"><label class="lbl">Name</label><input id="e-name" value="${esc(e.item)}"></div>
-          ${e.source==="ai" ? `<div class="full hint" style="margin-top:-3px">"Re-estimate" looks this name up with AI and replaces the values below.</div>` : ""}
           ${e.source==="ai" ? `<div class="full"><label class="lbl">Your original text</label><input id="e-orig" value="${esc(e.text)}"></div>` : ""}
           <div class="full"><label class="lbl">Amount</label><input id="e-qty" value="${esc(e.qty)}"></div>
-          <div class="full"><label class="lbl">Portion (g) &mdash; editing this rescales the macros</label><input id="e-g" type="number" inputmode="decimal" min="0" value="${e.grams == null ? "" : e.grams}"></div>
+          <div class="full"><label class="lbl">Portion (g) &mdash; rescales the macros as you change it</label><input id="e-g" type="number" inputmode="decimal" min="0" value="${state.editBase && state.editBase.grams != null ? state.editBase.grams : (e.grams == null ? "" : e.grams)}"></div>
           <div><label class="lbl">Protein g</label><input id="e-p" type="number" inputmode="decimal" min="0" value="${e.protein}"></div>
           <div><label class="lbl">Fat g</label><input id="e-f" type="number" inputmode="decimal" min="0" value="${e.fat}"></div>
           <div><label class="lbl">Carbs g</label><input id="e-c" type="number" inputmode="decimal" min="0" value="${e.carbs}"></div>
           <div><label class="lbl">Calories</label><input id="e-k" type="number" inputmode="decimal" min="0" value="${e.kcal}"></div>
         </div>
+        ${e.source==="ai" ? `<div class="hint" style="margin-top:8px">Change the Name or Amount to enable Re-estimate (it recomputes the numbers with AI). Portion (g) just rescales what's here &mdash; no AI needed.</div>` : ""}
         <div class="acts">
           <button class="mini primary" data-act="savedit" data-id="${e.id}">Save</button>
           <button class="mini ghost" data-act="canceledit">Cancel</button>
+          ${e.source==="ai" ? `<button class="mini ghost" id="e-redo" data-act="eredo" disabled title="Change the Name or Amount to use this">Re-estimate</button>` : ""}
           <button class="mini danger" data-act="del" data-id="${e.id}" style="margin-left:auto">Delete</button>
         </div>
       </div>`;
     }
     const noteHtml = e.note ? `<div class="meta">⚠ ${esc(e.note)}</div>` : "";
-    const amt = e.qty ? esc(e.qty) : (e.grams ? "≈ " + e.grams + " g" : "");
+    const qtyLine = e.qty ? esc(e.qty) : "";
+    const gLine = (e.grams && !(e.qty || "").includes(String(e.grams))) ? "≈ " + e.grams + " g" : "";
     const typed = (e.text && e.text.trim() && e.text.trim() !== (e.item || "").trim()) ? esc(e.text.trim()) : "";
     return `<div class="entry">
       <div class="spread">
         <div class="grow">
           <div class="name">${esc(e.item)} <span class="badge">${e.source==="ai" ? "AI" : e.source==="photo" ? "Photo" : "manual"}</span></div>
-          ${amt ? `<div class="meta">${amt}</div>` : ""}
+          ${qtyLine ? `<div class="meta">${qtyLine}</div>` : ""}
+          ${gLine ? `<div class="meta">${gLine}</div>` : ""}
           ${typed ? `<div class="meta" style="opacity:.7">typed: &ldquo;${typed}&rdquo;</div>` : ""}
         </div>
       </div>
@@ -1273,7 +1324,6 @@ Rules:
       ${noteHtml}
       <div class="acts">
         <button class="mini ghost" data-act="edit" data-id="${e.id}">Edit</button>
-        ${e.source==="ai" ? `<button class="mini ghost" data-act="redo" data-id="${e.id}">Re-estimate</button>` : ""}
         <button class="mini ghost" data-act="copy" data-id="${e.id}">${e.date===todayStr() ? "Duplicate" : "Copy to today"}</button>
         <button class="mini ghost danger" data-act="del" data-id="${e.id}" style="margin-left:auto">Delete</button>
       </div>
@@ -1388,17 +1438,21 @@ Rules:
       const b = e.target.closest("[data-act]");
       if(!b) return;
       const act = b.dataset.act, id = b.dataset.id;
-      if(act==="edit"){ state.editingId = id; render(); }
-      else if(act==="canceledit"){ state.editingId = null; render(); }
+      if(act==="edit"){ openEdit(id); }
+      else if(act==="canceledit"){ closeEdit(); }
       else if(act==="savedit"){ saveEdit(id); }
       else if(act==="del"){ deleteEntry(id); }
-      else if(act==="redo"){ reestimate(id); }
+      else if(act==="eredo"){ redoInForm(); }
       else if(act==="copy"){ copyEntryToToday(id); }
       else if(act==="hrange"){ state.settings.histRange = +b.dataset.n; saveSettings(); render(); }
-      else if(act==="histday"){ state.selectedDate = b.dataset.d; state.editingId=null; render(); window.scrollTo({top:0, behavior:"smooth"}); }
-      else if(act==="dorefresh"){ state.pendingRefresh=false; state.editingId=null; state.manualOpen=false; $("#manualForm").style.display="none"; render(); }
+      else if(act==="histday"){ state.selectedDate = b.dataset.d; closeEdit(); window.scrollTo({top:0, behavior:"smooth"}); }
+      else if(act==="dorefresh"){ state.pendingRefresh=false; state.editingId=null; state.editBase=null; state.manualOpen=false; $("#manualForm").style.display="none"; render(); }
     });
-    $("#view").addEventListener("input", e=>{ if(e.target && e.target.id === "e-g") rescaleEditMacros(); });
+    $("#view").addEventListener("input", e=>{
+      const id = e.target && e.target.id;
+      if(id === "e-g") rescaleEditMacros();
+      else if(id === "e-name" || id === "e-qty") refreshRedoState();
+    });
 
     // settings
     $("#apiKey").value = getKey();
