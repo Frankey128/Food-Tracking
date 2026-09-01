@@ -284,6 +284,7 @@
 
     <div class="addrow">
       <input class="grow" id="foodText" placeholder="e.g. 2 slices wholemeal toast with butter" autocomplete="off" enterkeyhint="done">
+      <input id="foodWeight" type="number" inputmode="numeric" min="0" placeholder="g" title="Total weight in grams (optional &mdash; the AI estimates it if left blank)" style="max-width:58px;text-align:center">
       <button class="primary" id="addBtn">Add</button>
     </div>
     <div class="toolbar">
@@ -299,6 +300,7 @@
       <div class="editgrid">
         <div class="full"><label class="lbl">Item name</label><input id="mName" placeholder="Item"></div>
         <div class="full"><label class="lbl">Amount (optional)</label><input id="mQty" placeholder="e.g. 1 bowl (250 g)"></div>
+        <div class="full"><label class="lbl">Weight (g) &mdash; optional</label><input id="mG" type="number" inputmode="numeric" min="0" placeholder="leave blank to skip"></div>
         <div><label class="lbl">Protein (g)</label><input id="mP" type="number" inputmode="decimal" min="0"></div>
         <div><label class="lbl">Fat (g)</label><input id="mF" type="number" inputmode="decimal" min="0"></div>
         <div><label class="lbl">Carbs (g)</label><input id="mC" type="number" inputmode="decimal" min="0"></div>
@@ -813,7 +815,7 @@ Rules:
   function dayEntries(date){
     return state.data.entries
       .filter(e => e.date===date && !e.deleted)
-      .sort((a,b)=> a.ts - b.ts);
+      .sort((a,b)=> b.ts - a.ts);   // newest first
   }
   function dayTotals(date){
     const t = {p:0,f:0,c:0,k:0,n:0};
@@ -825,17 +827,19 @@ Rules:
     if(state.busy) return;
     const text = $("#foodText").value.trim();
     if(!text) return;
+    const w = Math.round(+$("#foodWeight").value || 0);
     setBusy(true, "Estimating…");
     try{
-      const r = await estimate(text);
+      const r = await estimate(w > 0 ? (text + " - total weight " + w + " g") : text);
       if(r.ok === false){ toast(r.note || "Couldn't estimate that."); setBusy(false); return; }
       addEntry({
         id: uid(), date: state.selectedDate, ts: Date.now(), updated: Date.now(),
-        text, item: r.item || text, qty: r.assumed_qty || "", grams: r.portion_g,
+        text, item: r.item || text, qty: r.assumed_qty || "",
+        grams: w > 0 ? w : ((+r.portion_g > 0) ? Math.round(+r.portion_g) : null),
         protein: r.protein_g, fat: r.fat_g, carbs: r.carbs_g, kcal: r.kcal,
         note: r.note || "", source: "ai",
       });
-      $("#foodText").value = "";
+      $("#foodText").value = ""; $("#foodWeight").value = "";
       toast("Added " + (r.item||text) + " - P" + round(r.protein_g) + " F" + round(r.fat_g) + " C" + round(r.carbs_g) + " · " + round(r.kcal) + " kcal");
     }catch(err){
       toast(err.message, true);
@@ -1386,6 +1390,7 @@ Rules:
 
     $("#addBtn").onclick = addFromText;
     $("#foodText").addEventListener("keydown", e=>{ if(e.key==="Enter") addFromText(); });
+    $("#foodWeight").addEventListener("keydown", e=>{ if(e.key==="Enter") addFromText(); });
 
     $("#manualToggle").onclick = ()=>{
       state.manualOpen = !state.manualOpen;
@@ -1399,10 +1404,11 @@ Rules:
       addEntry({
         id: uid(), date: state.selectedDate, ts: Date.now(), updated: Date.now(),
         text: name, item: name, qty: ($("#mQty").value||"").trim(),
+        grams: (+$("#mG").value > 0) ? Math.round(+$("#mG").value) : null,
         protein: $("#mP").value, fat: $("#mF").value, carbs: $("#mC").value, kcal: $("#mK").value,
         note: "", source: "manual",
       });
-      ["mName","mQty","mP","mF","mC","mK"].forEach(id=> $("#"+id).value="");
+      ["mName","mQty","mG","mP","mF","mC","mK"].forEach(id=> $("#"+id).value="");
       toast("Added " + name);
     };
 
