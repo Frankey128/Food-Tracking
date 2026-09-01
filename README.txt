@@ -40,6 +40,11 @@ USING IT
 
 4. Add food: type e.g. "2 slices wholemeal toast with butter, boiled egg"
    and press Add.
+   - Next to the box is a small optional "g" field for the total weight.
+     Fill it and the AI works to that weight; leave it blank and the AI
+     estimates the weight itself. "+ Enter macros manually" also has an
+     optional Weight (g).
+   - The day's log lists newest at the top.
    - If you give no amount, the AI assumes ONE STANDARD ADULT PORTION.
    - Each AI row keeps a "Portion (g)" - the assumed weight, shown on the
      row. Open Edit, change it, and protein/fat/carbs/kcal rescale to
