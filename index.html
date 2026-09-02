@@ -652,7 +652,7 @@ Rules:
       grams: (+e.grams > 0) ? Math.round(+e.grams) : null,
       protein: round(e.protein), fat: round(e.fat), carbs: round(e.carbs), kcal: round(e.kcal),
       note: e.note || "",
-      source: (e.source === "manual" || e.source === "photo") ? e.source : "ai",
+      source: (e.source === "manual" || e.source === "photo" || e.source === "barcode") ? e.source : "ai",
     };
   }
 
@@ -925,9 +925,105 @@ Rules:
     return c.toDataURL("image/jpeg", 0.82).split(",")[1];  // base64 only, never stored
   }
 
+  // ---------- barcode -> Open Food Facts (no AI tokens) ----------
+  const BC_FORMATS = ["ean_13","ean_8","upc_a","upc_e"];
+  let _zxingP = null;
+  function loadZXing(){
+    if(_zxingP) return _zxingP;
+    _zxingP = new Promise(res=>{
+      if(window.ZXing) return res(window.ZXing);
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js";
+      s.onload = ()=> res(window.ZXing || null);
+      s.onerror = ()=> res(null);
+      document.head.appendChild(s);
+    });
+    return _zxingP;
+  }
+  function normCode(s){
+    const d = String(s || "").replace(/\D/g, "");
+    return (d.length === 8 || d.length === 12 || d.length === 13 || d.length === 14) ? d : null;
+  }
+  async function decodeBarcode(file){
+    // 1) native BarcodeDetector (Android Chrome, desktop Chrome/Edge)
+    if("BarcodeDetector" in window){
+      try{
+        const det = new window.BarcodeDetector({ formats: BC_FORMATS });
+        const bmp = await createImageBitmap(file);
+        const found = await det.detect(bmp);
+        if(bmp.close) bmp.close();
+        if(found && found.length) return normCode(found[0].rawValue);
+      }catch(e){ /* fall through */ }
+    }
+    // 2) ZXing fallback (iOS Safari) - lazy CDN load, retail formats only
+    try{
+      const Z = await loadZXing();
+      if(!Z) return null;
+      const hints = new Map();
+      hints.set(Z.DecodeHintType.POSSIBLE_FORMATS,
+        [Z.BarcodeFormat.EAN_13, Z.BarcodeFormat.EAN_8, Z.BarcodeFormat.UPC_A, Z.BarcodeFormat.UPC_E]);
+      const reader = new Z.BrowserMultiFormatReader(hints);
+      const url = URL.createObjectURL(file);
+      try{
+        const img = new Image();
+        img.src = url;
+        await img.decode();
+        const res = await reader.decodeFromImageElement(img);
+        return res ? normCode(res.getText()) : null;
+      }finally{
+        if(reader.reset) reader.reset();
+        URL.revokeObjectURL(url);
+      }
+    }catch(e){ return null; }
+  }
+
+  function nnum(v){ const x = parseFloat(v); return isFinite(x) ? x : null; }
+  function servingGrams(s){
+    const m = String(s || "").match(/([\d.]+)\s*(g|ml)\b/i);
+    return m ? Math.round(parseFloat(m[1])) : 0;
+  }
+  async function lookupBarcode(code){
+    const url = "https://world.openfoodfacts.org/api/v2/product/" + encodeURIComponent(code)
+      + ".json?fields=product_name,brands,nutriments,serving_size";
+    let j;
+    try{
+      const r = await fetch(url, { headers:{ "Accept":"application/json" } });
+      j = await r.json();
+    }catch(e){ return null; }
+    if(!j || j.status === 0 || !j.product) return null;
+    const p = j.product, n = p.nutriments || {};
+    let kcal = nnum(n["energy-kcal_100g"]);
+    if(kcal == null){ const kj = nnum(n["energy_100g"]); if(kj != null) kcal = Math.round(kj / 4.184); }
+    const prot = nnum(n["proteins_100g"]), fat = nnum(n["fat_100g"]), carb = nnum(n["carbohydrates_100g"]);
+    if(kcal == null && prot == null && fat == null && carb == null) return null;   // no usable nutrition
+    const brand = p.brands ? String(p.brands).split(",")[0].trim() : "";
+    const name = p.product_name || ("Product " + code);
+    return {
+      via: "barcode", code,
+      title: (brand ? brand + " · " : "") + name,
+      basis: "per_100g",
+      serving_desc: p.serving_size || "",
+      servings_total: null,
+      grams: servingGrams(p.serving_size) || null,
+      protein_g: prot || 0, fat_g: fat || 0, carbs_g: carb || 0, kcal: kcal || 0,
+      confidence: "high", note: "",
+    };
+  }
+
   async function addFromPhoto(file){
     if(!file || state.busy) return;
     if(!/^image\//.test(file.type || "")){ toast("That's not an image.", true); return; }
+    setBusy(true, "Checking for a barcode…");
+    let code = null;
+    try{ code = await decodeBarcode(file); }catch(e){ code = null; }
+    if(code){
+      setBusy(true, "Looking up barcode…");
+      try{
+        const ex = await lookupBarcode(code);
+        if(ex){ setBusy(false); openPhotoReview(ex, file); return; }
+        toast("Barcode " + code + " isn't in Open Food Facts — reading the pack instead.");
+      }catch(e){ toast("Barcode lookup failed — reading the pack instead."); }
+    }
     setBusy(true, "Preparing image…");
     let b64;
     try{ b64 = await prepImage(file); }
@@ -1000,17 +1096,23 @@ Rules:
 
     $("#pr-name").value = ex.title || "Food from photo";
     $("#pr-detected").textContent = describeBasis(ex);
-    $("#pr-note").textContent = [
-      ex.confidence ? "Confidence: " + ex.confidence : "",
-      ex.note || "",
-      "The image itself is not saved."
-    ].filter(Boolean).join("  ·  ");
+    $("#pr-note").textContent = ex.via === "barcode"
+      ? "Open Food Facts data - nothing was sent to any AI. Numbers are editable."
+      : [
+          ex.confidence ? "Confidence: " + ex.confidence : "",
+          ex.note || "",
+          "The image itself is not saved."
+        ].filter(Boolean).join("  ·  ");
     buildPortionUI(ex);
     $("#photoReview").style.display = "block";
     $("#photoReview").scrollIntoView({ block:"nearest" });
   }
 
   function describeBasis(ex){
+    if(ex.via === "barcode"){
+      return "Barcode " + (ex.code || "") + " · Open Food Facts · per 100 g"
+        + (ex.serving_desc ? " (serving " + ex.serving_desc + ")" : "") + ".";
+    }
     if(ex.basis === "per_100g") return "Label read - values per 100 g.";
     if(ex.basis === "per_serving") return "Label read - per serving" + (ex.serving_desc ? " (" + ex.serving_desc + ")" : "") + ".";
     if(ex.basis === "whole_recipe") return "Recipe read - makes " + (ex.servings_total || "?") + (ex.servings_total === 1 ? " serving." : " servings.");
@@ -1087,7 +1189,7 @@ Rules:
       id: uid(), date: state.selectedDate, ts: Date.now(), updated: Date.now(),
       text: "", item: name, qty: photoQtyLabel(ex, p), grams: g,
       protein: round(ex.protein_g * f), fat: round(ex.fat_g * f), carbs: round(ex.carbs_g * f), kcal: round(ex.kcal * f),
-      note: ex.note || "", source: "photo",
+      note: ex.note || "", source: ex.via === "barcode" ? "barcode" : "photo",
     });
     closePhotoReview();
     toast("Added " + name);
@@ -1313,7 +1415,7 @@ Rules:
     return `<div class="entry">
       <div class="spread">
         <div class="grow">
-          <div class="name">${esc(e.item)} <span class="badge">${e.source==="ai" ? "AI" : e.source==="photo" ? "Photo" : "manual"}</span></div>
+          <div class="name">${esc(e.item)} <span class="badge">${e.source==="ai" ? "AI" : e.source==="photo" ? "Photo" : e.source==="barcode" ? "Barcode" : "manual"}</span></div>
           ${qtyLine ? `<div class="meta">${qtyLine}</div>` : ""}
           ${gLine ? `<div class="meta">${gLine}</div>` : ""}
           ${typed ? `<div class="meta" style="opacity:.7">typed: &ldquo;${typed}&rdquo;</div>` : ""}

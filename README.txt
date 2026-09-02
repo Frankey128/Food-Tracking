@@ -70,6 +70,19 @@ USING IT
    The image is shrunk in the browser before sending (to keep token cost
    down) and is NEVER stored - only the numbers it produced are kept.
 
+6. Barcodes (same "Take photo" / "Choose image" buttons - no separate one):
+   - The app tries to read a barcode in the picture FIRST. If it finds
+     one, it looks the product up in Open Food Facts (free, no key, no AI
+     tokens) and jumps to the portion step - type grams / servings eaten.
+   - If there's no barcode, or the product isn't in Open Food Facts, it
+     falls back to reading the pack with Claude (step 5).
+   - Needs a sharp, straight, fairly close shot of the barcode. Decoding
+     is done in the browser (native BarcodeDetector, or the ZXing library
+     loaded from a CDN on iOS). Open Food Facts is strong on UK/EU brands,
+     patchier for own-brand and other regions; its data is crowd-sourced,
+     so check the numbers - they land in the editable fields like any
+     other entry. Barcode rows are badged "Barcode".
+
 MOVING BETWEEN DAYS
    - The < and > arrows step one day; "Today" jumps back to today.
    - Tap the date to pick any date from a calendar.
@@ -133,9 +146,12 @@ Deleting a row keeps it with deleted = true (a "1" in the CSV) so the
 deletion syncs too. "Erase all data on this device" only clears that
 browser; if cloud sync is on, it comes back on the next sync.
 
-Nothing leaves your devices except the food text you type, which goes to
-the Anthropic API for the estimate, and your log, which goes to your own
-Cloudflare Worker when cloud sync is on.
+What leaves your devices:
+ - the food text you type, and label/recipe/meal photos you read with the
+   AI - to the Anthropic API (photos are shrunk first and never stored);
+ - a scanned barcode number - to Open Food Facts, to look the product up
+   (the barcode is decoded in the browser; the image is not sent);
+ - your log - to your own Cloudflare Worker, when cloud sync is on.
 
 
 -------------------------------------------------------------------------
