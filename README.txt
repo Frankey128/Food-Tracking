@@ -67,8 +67,12 @@ NUTRITIONAL QUALITY (A-E)
      / UK front-of-pack guidance - fibre, protein and whole foods pull it
      up; saturated fat, sugar, salt and heavy processing pull it down.
    - Barcode items use the pack's real Nutri-Score from Open Food Facts
-     when it's published; otherwise the AI grades it. Manual entries are
-     ungraded unless you pick a grade in Edit.
+     when it's published. When it isn't (common for own-brand), the app
+     works out a Nutri-Score itself from the per-100 g numbers OFF
+     returns - done in the browser, no AI. Only if those numbers are too
+     incomplete to score does it fall back to a tiny text AI call (name +
+     numbers, no image). The row notes which method was used. Manual
+     entries are ungraded unless you pick a grade in Edit.
    - The day's grade (shown by the date and in History) is the kcal-
      weighted average of that day's graded items. "What A-E means" under
      the totals spells out the bands. It's a guide, not medical advice -
@@ -170,6 +174,9 @@ What leaves your devices:
    AI - to the Anthropic API (photos are shrunk first and never stored);
  - a scanned barcode number - to Open Food Facts, to look the product up
    (the barcode is decoded in the browser; the image is not sent);
+ - for a barcode with no published Nutri-Score AND no scoreable numbers,
+   the product name + its per-100 g macros go to the Anthropic API for a
+   grade (this is the only time the barcode flow uses AI);
  - your log - to your own Cloudflare Worker, when cloud sync is on.
 
 

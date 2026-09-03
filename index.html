@@ -1025,9 +1025,82 @@ Rules:
     const m = String(s || "").match(/([\d.]+)\s*(g|ml)\b/i);
     return m ? Math.round(parseFloat(m[1])) : 0;
   }
+
+  // ---- Nutri-Score (2017 method) computed from per-100 g values, for when Open Food Facts has no grade ----
+  const NS_T = {
+    energy:    [335,670,1005,1340,1675,2010,2345,2680,3015,3350],
+    energyBev: [0,30,60,90,120,150,180,210,240,270],
+    sugars:    [4.5,9,13.5,18,22.5,27,31,36,40,45],
+    sugarsBev: [0,1.5,3,4.5,6,7.5,9,10.5,12,13.5],
+    satfat:    [1,2,3,4,5,6,7,8,9,10],
+    sodium:    [90,180,270,360,450,540,630,720,810,900],
+    fibre:     [0.9,1.9,2.8,3.7,4.7],
+    protein:   [1.6,3.2,4.8,6.4,8.0],
+  };
+  function nsPoints(value, thresholds){
+    let p = 0;
+    for(let i = 0; i < thresholds.length; i++){ if(value > thresholds[i]) p = i + 1; }
+    return p;
+  }
+  // n = OFF nutriments object. Returns "A".."E" or "" if the numbers are too sparse.
+  function computeNutriScore(n, isBeverage, isWater, fvPercent){
+    let kj = nnum(n["energy-kj_100g"]);
+    if(kj == null) kj = nnum(n["energy_100g"]);                                  // OFF energy_100g is kJ
+    if(kj == null){ const kc = nnum(n["energy-kcal_100g"]); if(kc != null) kj = kc * 4.184; }
+    const sugars = nnum(n["sugars_100g"]);
+    const sat = nnum(n["saturated-fat_100g"]);
+    let sodiumMg = null;
+    const sodium = nnum(n["sodium_100g"]), salt = nnum(n["salt_100g"]);
+    if(sodium != null) sodiumMg = sodium * 1000;
+    else if(salt != null) sodiumMg = salt * 400;                                // salt g -> sodium mg
+    if(kj == null || sugars == null || sat == null || sodiumMg == null) return "";   // can't compute
+
+    if(isWater) return "A";
+
+    const fibre = nnum(n["fiber_100g"]) || 0;
+    const protein = nnum(n["proteins_100g"]) || 0;
+    const N = nsPoints(kj, isBeverage ? NS_T.energyBev : NS_T.energy)
+            + nsPoints(sugars, isBeverage ? NS_T.sugarsBev : NS_T.sugars)
+            + nsPoints(sat, NS_T.satfat)
+            + nsPoints(sodiumMg, NS_T.sodium);
+    const fv = fvPercent == null ? 0 : fvPercent;
+    const pFV = isBeverage
+      ? (fv > 80 ? 10 : fv > 60 ? 4 : fv > 40 ? 2 : 0)
+      : (fv > 80 ? 5  : fv > 60 ? 2 : fv > 40 ? 1 : 0);
+    const pFibre = nsPoints(fibre, NS_T.fibre);
+    const pProtein = nsPoints(protein, NS_T.protein);
+    const score = (N >= 11 && pFV < 5)
+      ? N - (pFibre + pFV)                       // protein points don't count
+      : N - (pFibre + pProtein + pFV);
+    if(isBeverage) return score <= 1 ? "B" : score <= 5 ? "C" : score <= 9 ? "D" : "E";
+    return score <= -1 ? "A" : score <= 2 ? "B" : score <= 10 ? "C" : score <= 18 ? "D" : "E";
+  }
+  function offNutriScore(p, n){
+    const cats = p.categories_tags || [];
+    const isBev = cats.some(t => /beverage/.test(t));
+    const isWater = isBev && cats.some(t => /(^|:)(waters|spring-water|mineral-water|drinking-water)/.test(t))
+      && !(nnum(n["sugars_100g"]) > 0.5) && !(nnum(n["energy-kcal_100g"]) > 4);
+    const fv = nnum(n["fruits-vegetables-legumes-estimate-from-ingredients_100g"]);
+    const fv2 = fv != null ? fv : nnum(n["fruits-vegetables-nuts-estimate-from-ingredients_100g"]);
+    const fv3 = fv2 != null ? fv2 : nnum(n["fruits-vegetables-nuts_100g"]);
+    return computeNutriScore(n, isBev, isWater, fv3);
+  }
+
+  // Tiny text-only grade call (no image) - used only when a barcode product has no usable numbers for a local score.
+  const SYSTEM_GRADE =
+`You assign ONE overall nutritional-quality grade for a typical UK adult, Nutri-Score style: A (best) to E (worst).
+Reward fibre, protein and whole/minimally-processed foods; penalise saturated fat, free sugars, salt and heavy processing.
+You get a product name and its values per 100 g. Reply with ONLY this JSON: {"grade":"A"|"B"|"C"|"D"|"E","note":"<max 8 words>"}`;
+  function gradeFromNumbers(name, per100){
+    const txt = (name || "Food") + " - per 100 g: protein " + (per100.protein_g || 0) + " g, fat "
+      + (per100.fat_g || 0) + " g, carbs " + (per100.carbs_g || 0) + " g, fibre " + (per100.fiber_g || 0)
+      + " g, " + (per100.kcal || 0) + " kcal.";
+    return callClaude(SYSTEM_GRADE, [{ type:"text", text:txt }], 200);
+  }
+
   async function lookupBarcode(code){
     const url = "https://world.openfoodfacts.org/api/v2/product/" + encodeURIComponent(code)
-      + ".json?fields=product_name,brands,nutriments,serving_size,nutriscore_grade";
+      + ".json?fields=product_name,brands,nutriments,serving_size,nutriscore_grade,nutrition_grades,categories_tags";
     let j;
     try{
       const r = await fetch(url, { headers:{ "Accept":"application/json" } });
@@ -1042,7 +1115,12 @@ Rules:
     if(kcal == null && prot == null && fat == null && carb == null) return null;   // no usable nutrition
     const brand = p.brands ? String(p.brands).split(",")[0].trim() : "";
     const name = p.product_name || ("Product " + code);
-    const gr = normGrade(p.nutriscore_grade);
+    let grade = normGrade(p.nutriscore_grade) || normGrade(p.nutrition_grades);
+    let gradeNote = grade ? "Nutri-Score from Open Food Facts" : "";
+    if(!grade){
+      const est = normGrade(offNutriScore(p, n));                 // compute it ourselves from the label numbers
+      if(est){ grade = est; gradeNote = "Nutri-Score estimated from the label numbers"; }
+    }
     return {
       via: "barcode", code,
       title: (brand ? brand + " · " : "") + name,
@@ -1051,7 +1129,7 @@ Rules:
       servings_total: null,
       grams: servingGrams(p.serving_size) || null,
       protein_g: prot || 0, fat_g: fat || 0, carbs_g: carb || 0, fiber_g: fib || 0, kcal: kcal || 0,
-      quality_grade: gr, quality_note: gr ? "Nutri-Score from Open Food Facts" : "",
+      quality_grade: grade, quality_note: gradeNote,
       confidence: "high", note: "",
     };
   }
@@ -1066,7 +1144,17 @@ Rules:
       setBusy(true, "Looking up barcode…");
       try{
         const ex = await lookupBarcode(code);
-        if(ex){ setBusy(false); openPhotoReview(ex, file); return; }
+        if(ex){
+          if(!ex.quality_grade && getKey()){                        // OFF had no grade and we couldn't compute one
+            setBusy(true, "Grading…");
+            try{
+              const g = await gradeFromNumbers(ex.title, ex);
+              const gg = g && normGrade(g.grade);
+              if(gg){ ex.quality_grade = gg; ex.quality_note = (g.note ? g.note + " " : "") + "(AI estimate from the numbers)"; }
+            }catch(e){ /* leave ungraded */ }
+          }
+          setBusy(false); openPhotoReview(ex, file); return;
+        }
         toast("Barcode " + code + " isn't in Open Food Facts — reading the pack instead.");
       }catch(e){ toast("Barcode lookup failed — reading the pack instead."); }
     }
@@ -1144,7 +1232,8 @@ Rules:
     $("#pr-name").value = ex.title || "Food from photo";
     $("#pr-detected").textContent = describeBasis(ex);
     $("#pr-note").textContent = ex.via === "barcode"
-      ? "Open Food Facts data - nothing was sent to any AI. Numbers are editable."
+      ? ("From Open Food Facts; the barcode image isn't sent anywhere. Numbers are editable."
+         + (ex.quality_note ? "  ·  Grade: " + ex.quality_note : ""))
       : [
           ex.confidence ? "Confidence: " + ex.confidence : "",
           ex.note || "",
@@ -1498,7 +1587,8 @@ Rules:
     const qtyLine = e.qty ? esc(e.qty) : "";
     const gLine = (e.grams && !(e.qty || "").includes(String(e.grams))) ? "≈ " + e.grams + " g" : "";
     const typed = (e.text && e.text.trim() && e.text.trim() !== (e.item || "").trim()) ? esc(e.text.trim()) : "";
-    const qNote = (e.gradeNote && e.source !== "barcode" && e.gradeNote !== "set manually") ? esc(e.gradeNote) : "";
+    const qNoteHide = new Set(["set manually", "Nutri-Score from Open Food Facts"]);
+    const qNote = (e.gradeNote && !qNoteHide.has(e.gradeNote)) ? esc(e.gradeNote) : "";
     return `<div class="entry">
       <div class="spread">
         <div class="grow">
