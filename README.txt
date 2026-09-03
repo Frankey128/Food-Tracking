@@ -2,9 +2,10 @@ FRANKEY'S FOOD FUN TIMES
 =======================
 
 A one-file web app for logging what you eat and seeing daily totals of
-protein, fat and carbohydrate (plus calories). Macro estimates come from
-the Anthropic (Claude) API from a short description you type; you can also
-enter the numbers by hand.
+protein, fat, carbohydrate and fibre (plus calories), with a rough A-E
+nutritional-quality grade for each item and for the day. Macro estimates
+come from the Anthropic (Claude) API from a short description you type;
+you can also enter the numbers by hand.
 
 Live at:  https://frankey128.github.io/Food-Tracking/
 Source:   GitHub repo  Frankey128/Food-Tracking  (this folder is the repo)
@@ -56,6 +57,22 @@ USING IT
      until you change the Name or Amount, then it re-runs the AI (on name
      + amount) and fills the fields - nothing is saved until you press
      Save, so it can't wipe your other edits. Save shows a "Saved" toast.
+   - Fibre (g) is tracked alongside protein/fat/carbs. It shows on the
+     row, in the day totals, and in History. The optional Daily goals in
+     Settings include a fibre target (UK adults are advised ~30 g/day).
+
+NUTRITIONAL QUALITY (A-E)
+   - Every AI, photo and barcode item gets a rough quality grade for a
+     typical UK adult: A (best) to E (worst), in the spirit of Nutri-Score
+     / UK front-of-pack guidance - fibre, protein and whole foods pull it
+     up; saturated fat, sugar, salt and heavy processing pull it down.
+   - Barcode items use the pack's real Nutri-Score from Open Food Facts
+     when it's published; otherwise the AI grades it. Manual entries are
+     ungraded unless you pick a grade in Edit.
+   - The day's grade (shown by the date and in History) is the kcal-
+     weighted average of that day's graded items. "What A-E means" under
+     the totals spells out the bands. It's a guide, not medical advice -
+     edit any grade in the Edit form.
 
 5. Add from a photo / screenshot:
    - "Take photo" opens the camera; "Choose image" picks an existing
@@ -123,15 +140,17 @@ show all of it. Settings -> Export & backup gives you:
   Download .json  - one object with an "entries" array. Example entry:
                       { "id":"...", "date":"2026-08-30",
                         "item":"Toast with butter", "qty":"2 slices (~80 g)",
-                        "protein":9, "fat":12, "carbs":30, "kcal":260,
+                        "protein":9, "fat":12, "carbs":30, "fiber":4,
+                        "kcal":260, "grade":"C", "gradeNote":"white bread, added fat",
                         "source":"ai", "deleted":false, "updated":1693... }
 
   Download .csv   - one row per entry, header line first. Opens straight
                     into Excel / Google Sheets. Columns:
                       id,date,ts,updated,deleted,source,item,qty,grams,
-                      text,protein,fat,carbs,kcal,note
+                      text,protein,fat,carbs,fiber,kcal,grade,gradeNote,note
                     ("grams" = assumed portion weight; "text" = what you
-                    originally typed.)
+                    originally typed; "grade" = A-E quality, "gradeNote" =
+                    why.)
 
   Copy to clipboard - the JSON, for pasting elsewhere.
 

@@ -33,6 +33,7 @@
     --protein:#7c3aed;
     --fat:#d97706;
     --carbs:#0284c7;
+    --fiber:#0d9488;
     --kcal:#059669;
     --danger:#dc2626;
     --ok:#16a34a;
@@ -58,6 +59,7 @@
       --protein:#b79dff;
       --fat:#fbbf5c;
       --carbs:#4fc3f7;
+      --fiber:#2dd4bf;
       --kcal:#41d69b;
       --danger:#f87171;
       --ok:#4ade80;
@@ -145,7 +147,7 @@
   #datePick{position:absolute;left:50%;bottom:0;width:1px;height:1px;opacity:0;pointer-events:none}
 
   .daytot{
-    display:flex;gap:16px;flex-wrap:wrap;justify-content:center;align-items:baseline;
+    display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:baseline;
     margin-top:11px;font-size:13px;font-variant-numeric:tabular-nums;
   }
   .daytot b{font-weight:750;font-size:15px}
@@ -153,18 +155,19 @@
   .addrow{display:flex;gap:8px;margin-top:12px}
   .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
 
-  .totals{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
-  .tot{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:11px 8px 10px;text-align:center}
-  .tot .lab{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
-  .tot .val{font-size:21px;font-weight:750;margin-top:3px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
-  .tot .val span{font-size:12px;font-weight:600;color:var(--muted)}
-  .tot .goal{font-size:10px;color:var(--faint);margin-top:1px}
+  .totals{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}
+  .tot{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 5px 9px;text-align:center}
+  .tot .lab{font-size:9px;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .tot .val{font-size:18px;font-weight:750;margin-top:3px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .tot .val span{font-size:10px;font-weight:600;color:var(--muted)}
+  .tot .goal{font-size:9px;color:var(--faint);margin-top:1px}
   .tot .bar{height:5px;border-radius:99px;background:var(--surface-2);margin-top:8px;overflow:hidden}
   .tot .bar>i{display:block;height:100%;border-radius:99px;transition:width .3s ease}
   .tot.p .val{color:var(--protein)} .tot.p .bar>i{background:var(--protein);box-shadow:0 0 12px -2px var(--protein)}
   .tot.f .val{color:var(--fat)} .tot.f .bar>i{background:var(--fat);box-shadow:0 0 12px -2px var(--fat)}
   .tot.c .val{color:var(--carbs)} .tot.c .bar>i{background:var(--carbs);box-shadow:0 0 12px -2px var(--carbs)}
   .tot.k .val{color:var(--kcal)} .tot.k .bar>i{background:var(--kcal);box-shadow:0 0 12px -2px var(--kcal)}
+  .tot.fb .val{color:var(--fiber)} .tot.fb .bar>i{background:var(--fiber);box-shadow:0 0 12px -2px var(--fiber)}
 
   .entry{border-top:1px solid var(--line);padding:13px 0}
   .entry:first-child{border-top:0;padding-top:2px}
@@ -173,12 +176,24 @@
   .entry .meta{font-size:12px;color:var(--muted);margin-top:2px}
   .entry .macros{font-size:13px;margin-top:7px;display:flex;gap:14px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
   .entry .macros b{font-weight:700}
-  .m-p{color:var(--protein)} .m-f{color:var(--fat)} .m-c{color:var(--carbs)} .m-k{color:var(--kcal)}
+  .m-p{color:var(--protein)} .m-f{color:var(--fat)} .m-c{color:var(--carbs)} .m-fb{color:var(--fiber)} .m-k{color:var(--kcal)}
   .badge{
     font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:600;
     border:1px solid var(--line-strong);border-radius:5px;padding:2px 5px;color:var(--muted);
     vertical-align:1px;margin-left:4px;
   }
+  .grade{
+    display:inline-block;min-width:15px;text-align:center;font-size:10px;font-weight:800;
+    border-radius:5px;padding:2px 5px;color:#fff;vertical-align:1px;margin-left:5px;
+  }
+  .g-a{background:#038141} .g-b{background:#85bb2f} .g-c{background:#fecb02;color:#3a2f00}
+  .g-d{background:#ee8100} .g-e{background:#e63e11}
+  .qline{font-size:12px;color:var(--muted);margin-top:12px;display:flex;gap:6px 8px;align-items:center;flex-wrap:wrap;line-height:1.5}
+  .qtag{font-size:12px;color:var(--muted)}
+  details.qguide{width:100%}
+  details.qguide summary{cursor:pointer;font-size:12px;color:var(--accent);list-style:none}
+  details.qguide summary::-webkit-details-marker{display:none}
+  details.qguide[open] summary{margin-bottom:4px}
   .entry .acts{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
   .editgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:8px}
   .editgrid .full{grid-column:1/-1}
@@ -304,7 +319,8 @@
         <div><label class="lbl">Protein (g)</label><input id="mP" type="number" inputmode="decimal" min="0"></div>
         <div><label class="lbl">Fat (g)</label><input id="mF" type="number" inputmode="decimal" min="0"></div>
         <div><label class="lbl">Carbs (g)</label><input id="mC" type="number" inputmode="decimal" min="0"></div>
-        <div><label class="lbl">Calories (kcal)</label><input id="mK" type="number" inputmode="decimal" min="0"></div>
+        <div><label class="lbl">Fibre (g)</label><input id="mFib" type="number" inputmode="decimal" min="0"></div>
+        <div class="full"><label class="lbl">Calories (kcal)</label><input id="mK" type="number" inputmode="decimal" min="0"></div>
       </div>
       <div class="row" style="margin-top:8px">
         <button class="primary grow" id="mAdd">Add to log</button>
@@ -382,8 +398,10 @@
         <div><span class="lbl">Protein g</span><input id="gP" type="number" inputmode="decimal" min="0"></div>
         <div><span class="lbl">Fat g</span><input id="gF" type="number" inputmode="decimal" min="0"></div>
         <div><span class="lbl">Carbs g</span><input id="gC" type="number" inputmode="decimal" min="0"></div>
-        <div><span class="lbl">Calories</span><input id="gK" type="number" inputmode="decimal" min="0"></div>
+        <div><span class="lbl">Fibre g</span><input id="gFib" type="number" inputmode="decimal" min="0"></div>
+        <div class="full"><span class="lbl">Calories</span><input id="gK" type="number" inputmode="decimal" min="0"></div>
       </div>
+      <div class="hint">UK adults are advised ~30 g fibre a day.</div>
     </div>
 
     <div class="field">
@@ -452,24 +470,26 @@ Estimate totals for the ENTIRE amount described (not per 100 g).
 If the user gives no amount, assume ONE STANDARD ADULT PORTION.
 Always give "portion_g": the total weight in grams of the amount you assumed (for drinks, treat millilitres as grams).
 Use standard food-composition data. These are rough estimates and that is fine - do not refuse or ask questions.
-Report protein, fat and carbohydrate in grams, and total energy in kilocalories, each rounded to a whole number.
+Report protein, fat, carbohydrate and fibre in grams, and total energy in kilocalories, each rounded to a whole number.
+Also rate the overall nutritional quality of this food for a typical UK adult on an A-E scale (A = best, E = worst), in the spirit of Nutri-Score / UK front-of-pack guidance: reward fibre, protein, unsaturated fats, fruit / vegetables / pulses / whole grains; penalise saturated fat, free sugars, salt and heavy processing. Give a short plain-English reason (max 8 words).
 If the text is not food or drink, or is far too vague to estimate at all, return ok=false with a brief reason in "note".
 
 Respond with ONLY one JSON object and nothing else (no prose, no code fences), exactly this shape:
-{"ok":true,"item":"<short normalised name>","assumed_qty":"<plain-English amount, e.g. '2 slices (~80 g)'>","portion_g":<number>,"protein_g":<number>,"fat_g":<number>,"carbs_g":<number>,"kcal":<number>,"note":"<short caveat, or empty string>"}`;
+{"ok":true,"item":"<short normalised name>","assumed_qty":"<plain-English amount, e.g. '2 slices (~80 g)'>","portion_g":<number>,"protein_g":<number>,"fat_g":<number>,"carbs_g":<number>,"fiber_g":<number>,"kcal":<number>,"quality_grade":"A"|"B"|"C"|"D"|"E","quality_note":"<max 8 words: main reason for the grade>","note":"<short caveat, or empty string>"}`;
 
   const SYSTEM_PROMPT_IMG =
 `You read a photo or screenshot of food information for a diet tracker: a nutrition label, a recipe, a menu, an app/website screenshot, or a plated meal.
 Pick the single most relevant food item and give its macros.
 
 Return ONLY one JSON object, no prose or code fences:
-{"ok":true,"title":"<short name>","basis":"per_100g"|"per_serving"|"whole_recipe"|"whole_item","serving_desc":"<e.g. '1 slice', or ''>","servings_total":<number or null>,"grams":<number or null>,"protein_g":<n>,"fat_g":<n>,"carbs_g":<n>,"kcal":<n>,"confidence":"high"|"medium"|"low","note":"<short caveat or ''>"}
+{"ok":true,"title":"<short name>","basis":"per_100g"|"per_serving"|"whole_recipe"|"whole_item","serving_desc":"<e.g. '1 slice', or ''>","servings_total":<number or null>,"grams":<number or null>,"protein_g":<n>,"fat_g":<n>,"carbs_g":<n>,"fiber_g":<n>,"kcal":<n>,"quality_grade":"A"|"B"|"C"|"D"|"E","quality_note":"<max 8 words: main reason>","confidence":"high"|"medium"|"low","note":"<short caveat or ''>"}
 
 Rules:
 - Nutrition panel present: copy its numbers. Use basis "per_serving" (fill serving_desc) or "per_100g" to match what the panel states.
 - Recipe with no panel: estimate the WHOLE recipe total; basis "whole_recipe"; servings_total = the stated yield (or your best guess).
 - Plated meal, or no usable text: estimate the whole plate; basis "whole_item"; set grams; confidence "low" or "medium".
-- protein_g/fat_g/carbs_g/kcal are for the quantity implied by "basis". Round grams and kcal to whole numbers.
+- protein_g/fat_g/carbs_g/fiber_g/kcal are for the quantity implied by "basis". Round grams and kcal to whole numbers. If fibre is not shown and cannot be judged, use 0.
+- quality_grade: overall nutritional quality for a typical UK adult, A (best) to E (worst), Nutri-Score style - reward fibre / protein / whole foods, penalise saturated fat, sugar, salt and heavy processing. quality_note: a short reason (max 8 words).
 - Where a quantity is unclear, assume ONE STANDARD ADULT PORTION. For basis "whole_item", set grams to that adult portion's weight.
 - The user may add a note (which flavour, how many, pack size, "no rice"). When the image is ambiguous, follow the note.
 - No food information at all: {"ok":false,"note":"<why>"}.`;
@@ -478,7 +498,7 @@ Rules:
   const state = {
     data: { version:1, entries:[] },
     selectedDate: todayStr(),
-    settings: { model:"claude-opus-5", histRange:30, goals:{p:null,f:null,c:null,k:null} },
+    settings: { model:"claude-opus-5", histRange:30, goals:{p:null,f:null,c:null,fib:null,k:null} },
     cloud: { url:"", pw:"" },
     editingId: null,
     editBase: null,
@@ -526,6 +546,13 @@ Rules:
   const round = x => Math.max(0, Math.round(Number(x)||0));
   const num = x => { const n = Number(x); return isFinite(n) && n>0 ? n : null; };
 
+  // ---------- nutritional-quality grade (A best - E worst, Nutri-Score style) ----------
+  const GRADE_V = { A:1, B:2, C:3, D:4, E:5 };
+  function gradeVal(g){ return GRADE_V[String(g||"").toUpperCase()] || 0; }
+  function valGrade(v){ const i = Math.max(1, Math.min(5, Math.round(v))); return ["","A","B","C","D","E"][i]; }
+  function normGrade(g){ g = String(g||"").toUpperCase(); return /^[A-E]$/.test(g) ? g : ""; }
+  function gradeChip(g){ g = normGrade(g); return g ? '<span class="grade g-' + g.toLowerCase() + '">' + g + '</span>' : ""; }
+
   // ---------- theme ----------
   function applyTheme(t){
     const light = t === "light";
@@ -546,7 +573,7 @@ Rules:
       const s = JSON.parse(lsGet(LS_SET)||"{}");
       if(s.model) state.settings.model = s.model;
       if(s.histRange != null) state.settings.histRange = s.histRange;
-      if(s.goals) state.settings.goals = { p:s.goals.p??null, f:s.goals.f??null, c:s.goals.c??null, k:s.goals.k??null };
+      if(s.goals) state.settings.goals = { p:s.goals.p??null, f:s.goals.f??null, c:s.goals.c??null, fib:s.goals.fib??null, k:s.goals.k??null };
     }catch(e){}
     try{
       const c = JSON.parse(lsGet(LS_CLOUD)||"{}");
@@ -558,7 +585,7 @@ Rules:
   function getKey(){ return (lsGet(LS_KEY)||"").trim(); }
 
   // ---------- data file format (JSON or CSV) ----------
-  const CSV_COLS = ["id","date","ts","updated","deleted","source","item","qty","grams","text","protein","fat","carbs","kcal","note"];
+  const CSV_COLS = ["id","date","ts","updated","deleted","source","item","qty","grams","text","protein","fat","carbs","fiber","kcal","grade","gradeNote","note"];
 
   function toCSV(){
     const cell = v => {
@@ -604,7 +631,8 @@ Rules:
         date: o.date, ts: +o.ts || Date.now(), updated: +o.updated || +o.ts || Date.now(),
         deleted: del === "1" || del === "true" || del === true,
         source: o.source, item: o.item, qty: o.qty, grams: o.grams, text: o.text, note: o.note,
-        protein: o.protein, fat: o.fat, carbs: o.carbs, kcal: o.kcal,
+        protein: o.protein, fat: o.fat, carbs: o.carbs, fiber: o.fiber, kcal: o.kcal,
+        grade: o.grade, gradeNote: o.gradeNote,
       });
     }
     return { version:1, entries };
@@ -650,7 +678,9 @@ Rules:
       item: e.item || e.text || "Item",
       qty: e.qty || "",
       grams: (+e.grams > 0) ? Math.round(+e.grams) : null,
-      protein: round(e.protein), fat: round(e.fat), carbs: round(e.carbs), kcal: round(e.kcal),
+      protein: round(e.protein), fat: round(e.fat), carbs: round(e.carbs), fiber: round(e.fiber), kcal: round(e.kcal),
+      grade: normGrade(e.grade),
+      gradeNote: e.gradeNote || "",
       note: e.note || "",
       source: (e.source === "manual" || e.source === "photo" || e.source === "barcode") ? e.source : "ai",
     };
@@ -818,9 +848,18 @@ Rules:
       .sort((a,b)=> b.ts - a.ts);   // newest first
   }
   function dayTotals(date){
-    const t = {p:0,f:0,c:0,k:0,n:0};
-    for(const e of dayEntries(date)){ t.p+=e.protein; t.f+=e.fat; t.c+=e.carbs; t.k+=e.kcal; t.n++; }
+    const t = {p:0,f:0,c:0,fib:0,k:0,n:0};
+    for(const e of dayEntries(date)){ t.p+=e.protein; t.f+=e.fat; t.c+=e.carbs; t.fib+=(e.fiber||0); t.k+=e.kcal; t.n++; }
     return t;
+  }
+  // day's overall quality grade: kcal-weighted mean of the graded entries (min weight 1)
+  function dayGrade(date){
+    let sw = 0, ss = 0;
+    for(const e of dayEntries(date)){
+      const gv = gradeVal(e.grade); if(!gv) continue;
+      const w = Math.max(e.kcal, 1); sw += w; ss += w * gv;
+    }
+    return sw ? valGrade(ss / sw) : "";
   }
 
   async function addFromText(){
@@ -836,11 +875,12 @@ Rules:
         id: uid(), date: state.selectedDate, ts: Date.now(), updated: Date.now(),
         text, item: r.item || text, qty: r.assumed_qty || "",
         grams: w > 0 ? w : ((+r.portion_g > 0) ? Math.round(+r.portion_g) : null),
-        protein: r.protein_g, fat: r.fat_g, carbs: r.carbs_g, kcal: r.kcal,
+        protein: r.protein_g, fat: r.fat_g, carbs: r.carbs_g, fiber: r.fiber_g, kcal: r.kcal,
+        grade: normGrade(r.quality_grade), gradeNote: r.quality_note || "",
         note: r.note || "", source: "ai",
       });
       $("#foodText").value = ""; $("#foodWeight").value = "";
-      toast("Added " + (r.item||text) + " - P" + round(r.protein_g) + " F" + round(r.fat_g) + " C" + round(r.carbs_g) + " · " + round(r.kcal) + " kcal");
+      toast("Added " + (r.item||text) + " - P" + round(r.protein_g) + " F" + round(r.fat_g) + " C" + round(r.carbs_g) + " Fb" + round(r.fiber_g) + " · " + round(r.kcal) + " kcal" + (normGrade(r.quality_grade) ? " · quality " + normGrade(r.quality_grade) : ""));
     }catch(err){
       toast(err.message, true);
     }
@@ -862,18 +902,21 @@ Rules:
       if(r.ok === false){ toast(r.note || "Couldn't estimate that."); }
       else{
         const g = (+r.portion_g > 0) ? Math.round(+r.portion_g) : null;
-        const p = round(r.protein_g), f = round(r.fat_g), c = round(r.carbs_g), k = round(r.kcal);
+        const p = round(r.protein_g), f = round(r.fat_g), c = round(r.carbs_g), fib = round(r.fiber_g), k = round(r.kcal);
+        const gr = normGrade(r.quality_grade);
         if($("#e-qty")) $("#e-qty").value = r.assumed_qty || amt;
         if($("#e-g")) $("#e-g").value = g == null ? "" : g;
         if($("#e-p")) $("#e-p").value = p;
         if($("#e-f")) $("#e-f").value = f;
         if($("#e-c")) $("#e-c").value = c;
+        if($("#e-fiber")) $("#e-fiber").value = fib;
         if($("#e-k")) $("#e-k").value = k;
+        if(gr && $("#e-grade")) $("#e-grade").value = gr;
         if(state.editBase){
           state.editBase.name = name;
           state.editBase.qty = r.assumed_qty || amt;
           state.editBase.grams = g;
-          state.editBase.protein = p; state.editBase.fat = f; state.editBase.carbs = c; state.editBase.kcal = k;
+          state.editBase.protein = p; state.editBase.fat = f; state.editBase.carbs = c; state.editBase.fiber = fib; state.editBase.kcal = k;
         }
         toast("Re-estimated - review and Save");
       }
@@ -984,7 +1027,7 @@ Rules:
   }
   async function lookupBarcode(code){
     const url = "https://world.openfoodfacts.org/api/v2/product/" + encodeURIComponent(code)
-      + ".json?fields=product_name,brands,nutriments,serving_size";
+      + ".json?fields=product_name,brands,nutriments,serving_size,nutriscore_grade";
     let j;
     try{
       const r = await fetch(url, { headers:{ "Accept":"application/json" } });
@@ -995,9 +1038,11 @@ Rules:
     let kcal = nnum(n["energy-kcal_100g"]);
     if(kcal == null){ const kj = nnum(n["energy_100g"]); if(kj != null) kcal = Math.round(kj / 4.184); }
     const prot = nnum(n["proteins_100g"]), fat = nnum(n["fat_100g"]), carb = nnum(n["carbohydrates_100g"]);
+    const fib = nnum(n["fiber_100g"]);
     if(kcal == null && prot == null && fat == null && carb == null) return null;   // no usable nutrition
     const brand = p.brands ? String(p.brands).split(",")[0].trim() : "";
     const name = p.product_name || ("Product " + code);
+    const gr = normGrade(p.nutriscore_grade);
     return {
       via: "barcode", code,
       title: (brand ? brand + " · " : "") + name,
@@ -1005,7 +1050,8 @@ Rules:
       serving_desc: p.serving_size || "",
       servings_total: null,
       grams: servingGrams(p.serving_size) || null,
-      protein_g: prot || 0, fat_g: fat || 0, carbs_g: carb || 0, kcal: kcal || 0,
+      protein_g: prot || 0, fat_g: fat || 0, carbs_g: carb || 0, fiber_g: fib || 0, kcal: kcal || 0,
+      quality_grade: gr, quality_note: gr ? "Nutri-Score from Open Food Facts" : "",
       confidence: "high", note: "",
     };
   }
@@ -1081,7 +1127,8 @@ Rules:
 
   function openPhotoReview(ex, file){
     ex.protein_g = round(ex.protein_g); ex.fat_g = round(ex.fat_g);
-    ex.carbs_g = round(ex.carbs_g); ex.kcal = round(ex.kcal);
+    ex.carbs_g = round(ex.carbs_g); ex.fiber_g = round(ex.fiber_g); ex.kcal = round(ex.kcal);
+    ex.quality_grade = normGrade(ex.quality_grade);
     ex.servings_total = (+ex.servings_total > 0) ? +ex.servings_total : null;
     ex.grams = (+ex.grams > 0) ? +ex.grams : null;
     if(!["per_100g","per_serving","whole_recipe","whole_item"].includes(ex.basis)) ex.basis = "whole_item";
@@ -1165,12 +1212,14 @@ Rules:
   function updatePhotoPreview(){
     const ex = state.photoExtract; if(!ex) return;
     const f = photoFactor(ex, state.photoPortion);
-    const m = { p: round(ex.protein_g * f), f: round(ex.fat_g * f), c: round(ex.carbs_g * f), k: round(ex.kcal * f) };
+    const m = { p: round(ex.protein_g * f), f: round(ex.fat_g * f), c: round(ex.carbs_g * f), fib: round((ex.fiber_g || 0) * f), k: round(ex.kcal * f) };
     $("#pr-preview").innerHTML =
       '<span class="m-p"><b>' + m.p + '</b> P</span>' +
       '<span class="m-f"><b>' + m.f + '</b> F</span>' +
       '<span class="m-c"><b>' + m.c + '</b> C</span>' +
-      '<span class="m-k"><b>' + m.k + '</b> kcal</span>';
+      '<span class="m-fb"><b>' + m.fib + '</b> Fb</span>' +
+      '<span class="m-k"><b>' + m.k + '</b> kcal</span>' +
+      (ex.quality_grade ? '<span class="qtag">quality ' + gradeChip(ex.quality_grade) + '</span>' : '');
   }
   function photoQtyLabel(ex, p){
     if(ex.basis === "per_100g") return p + " g";
@@ -1188,7 +1237,9 @@ Rules:
     addEntry({
       id: uid(), date: state.selectedDate, ts: Date.now(), updated: Date.now(),
       text: "", item: name, qty: photoQtyLabel(ex, p), grams: g,
-      protein: round(ex.protein_g * f), fat: round(ex.fat_g * f), carbs: round(ex.carbs_g * f), kcal: round(ex.kcal * f),
+      protein: round(ex.protein_g * f), fat: round(ex.fat_g * f), carbs: round(ex.carbs_g * f),
+      fiber: round((ex.fiber_g || 0) * f), kcal: round(ex.kcal * f),
+      grade: normGrade(ex.quality_grade), gradeNote: ex.quality_note || "",
       note: ex.note || "", source: ex.via === "barcode" ? "barcode" : "photo",
     });
     closePhotoReview();
@@ -1218,7 +1269,8 @@ Rules:
     addEntry({
       id: uid(), date: todayStr(), ts: Date.now(), updated: Date.now(),
       text: e.text, item: e.item, qty: e.qty, grams: e.grams,
-      protein: e.protein, fat: e.fat, carbs: e.carbs, kcal: e.kcal,
+      protein: e.protein, fat: e.fat, carbs: e.carbs, fiber: e.fiber, kcal: e.kcal,
+      grade: e.grade, gradeNote: e.gradeNote,
       note: e.note, source: e.source,
     });
     toast((sameDay ? "Duplicated " : "Copied to today: ") + e.item);
@@ -1235,6 +1287,11 @@ Rules:
     e.protein = round($("#e-p").value);
     e.fat = round($("#e-f").value);
     e.carbs = round($("#e-c").value);
+    if($("#e-fiber")) e.fiber = round($("#e-fiber").value);
+    if($("#e-grade")){
+      const gVal = normGrade($("#e-grade").value);
+      if(gVal !== (e.grade || "")){ e.grade = gVal; e.gradeNote = gVal ? "set manually" : ""; }
+    }
     e.kcal = round($("#e-k").value);
     e.updated = Date.now();
     state.editingId = null;
@@ -1250,7 +1307,7 @@ Rules:
       name: e.item || "",
       qty: e.qty || "",
       grams: (e.grams > 0 ? e.grams : gramsFromText(e.qty)),
-      protein: e.protein, fat: e.fat, carbs: e.carbs, kcal: e.kcal,
+      protein: e.protein, fat: e.fat, carbs: e.carbs, fiber: e.fiber || 0, kcal: e.kcal,
     } : null;
     render();
   }
@@ -1266,6 +1323,7 @@ Rules:
     $("#e-p").value = round(base.protein * f);
     $("#e-f").value = round(base.fat * f);
     $("#e-c").value = round(base.carbs * f);
+    if($("#e-fiber")) $("#e-fiber").value = round((base.fiber || 0) * f);
     $("#e-k").value = round(base.kcal * f);
   }
 
@@ -1291,8 +1349,10 @@ Rules:
     const byDate = {};
     for(const e of state.data.entries){
       if(e.deleted) continue;
-      const t = byDate[e.date] || (byDate[e.date] = {p:0,f:0,c:0,k:0});
-      t.p += e.protein; t.f += e.fat; t.c += e.carbs; t.k += e.kcal;
+      const t = byDate[e.date] || (byDate[e.date] = {p:0,f:0,c:0,fib:0,k:0,gw:0,gs:0});
+      t.p += e.protein; t.f += e.fat; t.c += e.carbs; t.fib += (e.fiber||0); t.k += e.kcal;
+      const gv = gradeVal(e.grade);
+      if(gv){ const w = Math.max(e.kcal, 1); t.gw += w; t.gs += w * gv; }
     }
     let dates = Object.keys(byDate).sort().reverse();
     if(hr){
@@ -1312,24 +1372,25 @@ Rules:
     }
 
     const n = dates.length;
-    const sum = dates.reduce((a,d)=>{ const t=byDate[d]; a.p+=t.p; a.f+=t.f; a.c+=t.c; a.k+=t.k; return a; }, {p:0,f:0,c:0,k:0});
+    const sum = dates.reduce((a,d)=>{ const t=byDate[d]; a.p+=t.p; a.f+=t.f; a.c+=t.c; a.fib+=t.fib; a.k+=t.k; return a; }, {p:0,f:0,c:0,fib:0,k:0});
     const avg = k => Math.round(sum[k]/n);
     const maxK = Math.max(1, ...dates.map(d => byDate[d].k));
 
     const rows = dates.map(d => {
       const t = byDate[d];
       const pct = Math.round(t.k / maxK * 100);
+      const dg = t.gw ? valGrade(t.gs / t.gw) : "";
       return `<button class="hrow${d===state.selectedDate ? " sel" : ""}" data-act="histday" data-d="${d}">
-        <span class="hd">${esc(histLabel(d))}</span>
+        <span class="hd">${esc(histLabel(d))}${dg ? " " + gradeChip(dg) : ""}</span>
         <span class="hk">${t.k}<small> kcal</small></span>
-        <span class="hm">P ${t.p} · F ${t.f} · C ${t.c}</span>
+        <span class="hm">P ${t.p} · F ${t.f} · C ${t.c} · Fb ${t.fib}</span>
         <span class="hbar"><i style="width:${pct}%"></i></span>
       </button>`;
     }).join("");
 
     return `<div class="card">
       <div class="spread"><div class="lbl">History</div><div class="seg">${seg}</div></div>
-      <div class="histsum">${n} day${n>1?"s":""} logged &nbsp;·&nbsp; avg ${avg("k")} kcal &nbsp;·&nbsp; P ${avg("p")} F ${avg("f")} C ${avg("c")}</div>
+      <div class="histsum">${n} day${n>1?"s":""} logged &nbsp;·&nbsp; avg ${avg("k")} kcal &nbsp;·&nbsp; P ${avg("p")} F ${avg("f")} C ${avg("c")} Fb ${avg("fib")}</div>
       <div class="histlist">${rows}</div>
     </div>`;
   }
@@ -1340,13 +1401,16 @@ Rules:
 
     const g = state.settings.goals;
     const t = dayTotals(state.selectedDate);
+    const dg = dayGrade(state.selectedDate);
 
     $("#dayTotBar").innerHTML =
       `<span class="m-p"><b>${t.p}</b> P</span>` +
       `<span class="m-f"><b>${t.f}</b> F</span>` +
       `<span class="m-c"><b>${t.c}</b> C</span>` +
-      `<span class="m-k"><b>${t.k}</b> kcal</span>`;
-    const softMax = {p:150,f:90,c:300,k:2400};
+      `<span class="m-fb"><b>${t.fib}</b> Fb</span>` +
+      `<span class="m-k"><b>${t.k}</b> kcal</span>` +
+      (dg ? `<span class="qtag">${gradeChip(dg)}</span>` : "");
+    const softMax = {p:150,f:90,c:300,fb:30,k:2400};
     function totCell(cls, lab, val, unit, goal){
       const denom = goal || softMax[cls];
       const pct = Math.min(100, Math.round((val/denom)*100));
@@ -1373,7 +1437,17 @@ Rules:
           ${totCell("p","Protein",t.p,"g",num(g.p))}
           ${totCell("f","Fat",t.f,"g",num(g.f))}
           ${totCell("c","Carbs",t.c,"g",num(g.c))}
-          ${totCell("k","Calories",t.k,"",num(g.k))}
+          ${totCell("fb","Fibre",t.fib,"g",num(g.fib))}
+          ${totCell("k","Energy",t.k,"",num(g.k))}
+        </div>
+        <div class="qline">
+          ${dg
+            ? `<span>Food quality ${state.selectedDate===todayStr() ? "today" : "for " + esc(relLabel(state.selectedDate).toLowerCase())}</span> ${gradeChip(dg)} <span>&mdash; kcal-weighted, Nutri-Score style, a rough guide for a UK adult</span>`
+            : `<span>Log AI, photo or barcode items to get an A&ndash;E food-quality score for the day.</span>`}
+          <details class="qguide"><summary>What A&ndash;E means</summary>
+            <div class="hint">A &ndash; nutrient-dense, minimally processed &nbsp;&middot;&nbsp; B &ndash; solid everyday choice &nbsp;&middot;&nbsp; C &ndash; fine in moderation &nbsp;&middot;&nbsp; D &ndash; a treat, keep it occasional &nbsp;&middot;&nbsp; E &ndash; rarely.<br>
+            Comes from the pack's Nutri-Score when you scan a barcode, otherwise the AI's estimate for a typical UK adult. Manual entries aren't graded unless you set one in Edit.</div>
+          </details>
         </div>
       </div>
 
@@ -1397,7 +1471,19 @@ Rules:
           <div><label class="lbl">Protein g</label><input id="e-p" type="number" inputmode="decimal" min="0" value="${e.protein}"></div>
           <div><label class="lbl">Fat g</label><input id="e-f" type="number" inputmode="decimal" min="0" value="${e.fat}"></div>
           <div><label class="lbl">Carbs g</label><input id="e-c" type="number" inputmode="decimal" min="0" value="${e.carbs}"></div>
-          <div><label class="lbl">Calories</label><input id="e-k" type="number" inputmode="decimal" min="0" value="${e.kcal}"></div>
+          <div><label class="lbl">Fibre g</label><input id="e-fiber" type="number" inputmode="decimal" min="0" value="${e.fiber || 0}"></div>
+          <div class="full"><label class="lbl">Calories</label><input id="e-k" type="number" inputmode="decimal" min="0" value="${e.kcal}"></div>
+          <div class="full"><label class="lbl">Nutritional quality &mdash; A (best) to E (worst), for a UK adult</label>
+            <select id="e-grade">
+              <option value=""${e.grade ? "" : " selected"}>&mdash; not graded</option>
+              <option value="A"${e.grade==="A" ? " selected" : ""}>A</option>
+              <option value="B"${e.grade==="B" ? " selected" : ""}>B</option>
+              <option value="C"${e.grade==="C" ? " selected" : ""}>C</option>
+              <option value="D"${e.grade==="D" ? " selected" : ""}>D</option>
+              <option value="E"${e.grade==="E" ? " selected" : ""}>E</option>
+            </select>
+            ${e.gradeNote ? `<div class="hint">${esc(e.gradeNote)}</div>` : ""}
+          </div>
         </div>
         ${e.source==="ai" ? `<div class="hint" style="margin-top:8px">Change the Name or Amount to enable Re-estimate (it recomputes the numbers with AI). Portion (g) just rescales what's here &mdash; no AI needed.</div>` : ""}
         <div class="acts">
@@ -1412,12 +1498,14 @@ Rules:
     const qtyLine = e.qty ? esc(e.qty) : "";
     const gLine = (e.grams && !(e.qty || "").includes(String(e.grams))) ? "≈ " + e.grams + " g" : "";
     const typed = (e.text && e.text.trim() && e.text.trim() !== (e.item || "").trim()) ? esc(e.text.trim()) : "";
+    const qNote = (e.gradeNote && e.source !== "barcode" && e.gradeNote !== "set manually") ? esc(e.gradeNote) : "";
     return `<div class="entry">
       <div class="spread">
         <div class="grow">
-          <div class="name">${esc(e.item)} <span class="badge">${e.source==="ai" ? "AI" : e.source==="photo" ? "Photo" : e.source==="barcode" ? "Barcode" : "manual"}</span></div>
+          <div class="name">${esc(e.item)} <span class="badge">${e.source==="ai" ? "AI" : e.source==="photo" ? "Photo" : e.source==="barcode" ? "Barcode" : "manual"}</span>${gradeChip(e.grade)}</div>
           ${qtyLine ? `<div class="meta">${qtyLine}</div>` : ""}
           ${gLine ? `<div class="meta">${gLine}</div>` : ""}
+          ${qNote ? `<div class="meta" style="opacity:.7">quality: ${qNote}</div>` : ""}
           ${typed ? `<div class="meta" style="opacity:.7">typed: &ldquo;${typed}&rdquo;</div>` : ""}
         </div>
       </div>
@@ -1425,6 +1513,7 @@ Rules:
         <span class="m-p"><b>${e.protein}</b> P</span>
         <span class="m-f"><b>${e.fat}</b> F</span>
         <span class="m-c"><b>${e.carbs}</b> C</span>
+        <span class="m-fb"><b>${e.fiber || 0}</b> Fb</span>
         <span class="m-k"><b>${e.kcal}</b> kcal</span>
       </div>
       ${noteHtml}
@@ -1507,10 +1596,10 @@ Rules:
         id: uid(), date: state.selectedDate, ts: Date.now(), updated: Date.now(),
         text: name, item: name, qty: ($("#mQty").value||"").trim(),
         grams: (+$("#mG").value > 0) ? Math.round(+$("#mG").value) : null,
-        protein: $("#mP").value, fat: $("#mF").value, carbs: $("#mC").value, kcal: $("#mK").value,
+        protein: $("#mP").value, fat: $("#mF").value, carbs: $("#mC").value, fiber: $("#mFib").value, kcal: $("#mK").value,
         note: "", source: "manual",
       });
-      ["mName","mQty","mG","mP","mF","mC","mK"].forEach(id=> $("#"+id).value="");
+      ["mName","mQty","mG","mP","mF","mC","mFib","mK"].forEach(id=> $("#"+id).value="");
       toast("Added " + name);
     };
 
@@ -1571,12 +1660,12 @@ Rules:
     };
     $("#model").value = state.settings.model;
     const g = state.settings.goals;
-    $("#gP").value = g.p ?? ""; $("#gF").value = g.f ?? ""; $("#gC").value = g.c ?? ""; $("#gK").value = g.k ?? "";
+    $("#gP").value = g.p ?? ""; $("#gF").value = g.f ?? ""; $("#gC").value = g.c ?? ""; $("#gFib").value = g.fib ?? ""; $("#gK").value = g.k ?? "";
 
     $("#saveSettings").onclick = ()=>{
       lsSet(LS_KEY, ($("#apiKey").value||"").trim());
       state.settings.model = $("#model").value;
-      state.settings.goals = { p:num($("#gP").value), f:num($("#gF").value), c:num($("#gC").value), k:num($("#gK").value) };
+      state.settings.goals = { p:num($("#gP").value), f:num($("#gF").value), c:num($("#gC").value), fib:num($("#gFib").value), k:num($("#gK").value) };
       saveSettings();
       render();
       toast("Settings saved");
