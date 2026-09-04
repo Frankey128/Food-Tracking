@@ -33,19 +33,36 @@ USING IT
    - Set a low monthly spend limit on the key. This app costs well under
      a cent a day.
    - Model dropdown: Opus (best), Sonnet (cheaper), Haiku (cheapest).
+   - Until a key is set, a small note under the Add box reminds you -
+     manual entry and barcode scanning work fine without one either way.
 
 3. Settings -> Cloud sync -> enter the Worker URL and the backend
    password, then Connect. Do this on every device with the SAME URL and
    password. After that, every add/edit/delete syncs automatically.
    (See CLOUD SYNC below. Without it, data stays on that one device.)
+   - If you haven't set this up yet, a banner above the totals says so
+     ("Not syncing to your other devices yet") until you dismiss it or
+     connect. The little pill next to the theme toggle (top right) always
+     shows sync status - tap it any time to jump straight to these
+     settings, and once connected it shows how long ago it last synced.
+   - "Set up another device..." (next to Connect/Disconnect) shows a QR
+     code with the Worker URL and password baked in. Scan it with your
+     other device's camera app and it opens the link and connects cloud
+     sync there automatically - no retyping a long URL and password on a
+     phone keyboard. Only show that code to your own devices.
 
 4. Add food: type e.g. "2 slices wholemeal toast with butter, boiled egg"
    and press Add.
-   - Next to the box is a small optional "g" field for the total weight.
-     Fill it and the AI works to that weight; leave it blank and the AI
-     estimates the weight itself. "+ Enter macros manually" also has an
-     optional Weight (g).
+   - Next to the box is a small optional "g/ml" field for the total
+     weight or volume (drinks work in ml too). Fill it and the AI works
+     to that amount; leave it blank and the AI estimates it itself.
+     "+ Enter macros manually" also has an optional Weight (g/ml).
+   - Items you've logged twice or more show as small "+ Name" chips under
+     the box - tap one to log it again instantly with the same numbers,
+     no AI call needed.
    - The day's log lists newest at the top.
+   - Deleting a row shows a "Deleted - Undo" toast for a few seconds if
+     you tap it by mistake.
    - If you give no amount, the AI assumes ONE STANDARD ADULT PORTION.
    - Each AI row keeps a "Portion (g)" - the assumed weight, shown on the
      row. Open Edit, change it, and protein/fat/carbs/kcal rescale to

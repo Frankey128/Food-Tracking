@@ -241,7 +241,7 @@
 
   .pill{
     font-size:11px;padding:4px 10px;border-radius:99px;border:1px solid var(--line-strong);
-    white-space:nowrap;font-weight:600;color:var(--muted);
+    white-space:nowrap;font-weight:600;color:var(--muted);cursor:pointer;
   }
   .pill.on{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,transparent);background:color-mix(in srgb,var(--ok) 12%,transparent)}
   .pill.off{color:var(--faint)}
@@ -299,9 +299,11 @@
 
     <div class="addrow">
       <input class="grow" id="foodText" placeholder="e.g. 2 slices wholemeal toast with butter" autocomplete="off" enterkeyhint="done">
-      <input id="foodWeight" type="number" inputmode="numeric" min="0" placeholder="g" title="Total weight in grams (optional &mdash; the AI estimates it if left blank)" style="max-width:58px;text-align:center">
+      <input id="foodWeight" type="number" inputmode="numeric" min="0" placeholder="g/ml" title="Total weight or volume in grams or millilitres (optional &mdash; the AI estimates it if left blank)" style="max-width:64px;text-align:center">
       <button class="primary" id="addBtn">Add</button>
     </div>
+    <div class="toolbar" id="quickChips" style="display:none"></div>
+    <div class="hint" id="keyHint" style="display:none">Add your Anthropic API key in Settings to enable AI food and photo estimates. Manual entry and barcode scanning still work without one.</div>
     <div class="toolbar">
       <button class="mini ghost" id="photoCamBtn">📷 Take photo</button>
       <button class="mini ghost" id="photoLibBtn">🖼 Choose image</button>
@@ -315,7 +317,7 @@
       <div class="editgrid">
         <div class="full"><label class="lbl">Item name</label><input id="mName" placeholder="Item"></div>
         <div class="full"><label class="lbl">Amount (optional)</label><input id="mQty" placeholder="e.g. 1 bowl (250 g)"></div>
-        <div class="full"><label class="lbl">Weight (g) &mdash; optional</label><input id="mG" type="number" inputmode="numeric" min="0" placeholder="leave blank to skip"></div>
+        <div class="full"><label class="lbl">Weight (g/ml) &mdash; optional</label><input id="mG" type="number" inputmode="numeric" min="0" placeholder="leave blank to skip"></div>
         <div><label class="lbl">Protein (g)</label><input id="mP" type="number" inputmode="decimal" min="0"></div>
         <div><label class="lbl">Fat (g)</label><input id="mF" type="number" inputmode="decimal" min="0"></div>
         <div><label class="lbl">Carbs (g)</label><input id="mC" type="number" inputmode="decimal" min="0"></div>
@@ -367,8 +369,14 @@
       <div class="row wrap" style="margin-top:8px">
         <button class="mini primary" id="cloudConnect">Connect</button>
         <button class="mini ghost" id="cloudDisconnect">Disconnect</button>
+        <button class="mini ghost" id="cloudShowQR">Set up another device&hellip;</button>
       </div>
       <div class="hint">Enter the same URL and password on every device &mdash; phone included &mdash; and every add, edit and delete syncs automatically. Leave blank to keep data on this device only.</div>
+      <div id="qrPanel" style="display:none;margin-top:10px;text-align:center">
+        <div id="qrCode" style="display:inline-block;background:#fff;padding:10px;border-radius:10px"></div>
+        <div class="hint">Scan this with your other device's camera app &mdash; it opens the link and connects cloud sync there automatically. Anyone who scans it can read and edit this log, so only show it to your own devices.</div>
+        <button class="mini ghost" id="qrClose" style="margin-top:8px">Hide</button>
+      </div>
     </div>
 
     <hr>
@@ -450,6 +458,7 @@
   const LS_SET   = "foodTracker.settings.v1";
   const LS_THEME = "foodTracker.theme";
   const LS_CLOUD = "foodTracker.cloud.v1";
+  const LS_SYNC_HINT = "foodTracker.syncHintDismissed";
 
   // localStorage can throw (private mode, locked-down browsers, data: URLs) - fall back to memory.
   let storageOK = true;
@@ -542,6 +551,14 @@ Rules:
     const y = Number(str.split("-")[0]);
     return prettyDate(str) + (y !== new Date().getFullYear() ? " " + y : "");
   }
+  function agoLabel(ts){
+    if(!ts) return "";
+    const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+    if(s < 45) return "just now";
+    const m = Math.round(s / 60); if(m < 60) return m + "m ago";
+    const h = Math.round(m / 60); if(h < 24) return h + "h ago";
+    return Math.round(h / 24) + "d ago";
+  }
 
   const round = x => Math.max(0, Math.round(Number(x)||0));
   const num = x => { const n = Number(x); return isFinite(n) && n>0 ? n : null; };
@@ -583,6 +600,10 @@ Rules:
   function saveLocal(){ lsSet(LS_DATA, JSON.stringify(state.data)); }
   function saveSettings(){ lsSet(LS_SET, JSON.stringify(state.settings)); }
   function getKey(){ return (lsGet(LS_KEY)||"").trim(); }
+  function updateKeyHint(){
+    const h = $("#keyHint");
+    if(h) h.style.display = getKey() ? "none" : "block";
+  }
 
   // ---------- data file format (JSON or CSV) ----------
   const CSV_COLS = ["id","date","ts","updated","deleted","source","item","qty","grams","text","protein","fat","carbs","fiber","kcal","grade","gradeNote","note"];
@@ -686,17 +707,31 @@ Rules:
     };
   }
 
+  let lastSyncAt = null;
   function updateSyncPill(justWrote){
     const pill = $("#syncPill");
     const store = $("#storeState");
+    pill.title = "Tap to open sync settings";
     if(cloudOn()){
       if(cloudError){ pill.className = "pill warn"; pill.textContent = "cloud: " + cloudError; }
-      else { pill.className = "pill on"; pill.textContent = justWrote ? "cloud: saved" : "cloud: on"; }
+      else {
+        pill.className = "pill on";
+        pill.textContent = justWrote ? "cloud: saved" : (lastSyncAt ? "cloud: synced " + agoLabel(lastSyncAt) : "cloud: on");
+      }
       store.textContent = "cloud sync";
       return;
     }
     pill.className = "pill off"; pill.textContent = "not syncing";
     store.textContent = storageOK ? "stored on this device" : "⚠ browser storage disabled - data won't persist";
+  }
+  function openSyncSettings(){
+    const d = document.querySelector("details.settings");
+    if(d) d.open = true;
+    const url = $("#cloudUrl");
+    if(url){
+      url.scrollIntoView({ block:"center", behavior:"smooth" });
+      try{ (state.cloud.url ? $("#cloudPw") : url).focus(); }catch(e){}
+    }
   }
 
   // ---------- cloud sync (Cloudflare Worker + KV) ----------
@@ -715,6 +750,7 @@ Rules:
       if(!r.ok){ cloudError = r.status === 401 ? "bad password" : ("error " + r.status); updateSyncPill(); return; }
       const incoming = await r.json();
       cloudError = null;
+      lastSyncAt = Date.now();
       const before = JSON.stringify(state.data);
       state.data = mergeData(state.data, incoming);
       if(JSON.stringify(state.data) !== before){
@@ -734,6 +770,7 @@ Rules:
       if(!r.ok){ cloudError = r.status === 401 ? "bad password" : ("save failed " + r.status); updateSyncPill(); return; }
       const merged = await r.json();
       cloudError = null;
+      lastSyncAt = Date.now();
       const before = JSON.stringify(state.data);
       state.data = mergeData(state.data, merged);
       if(JSON.stringify(state.data) !== before){
@@ -754,6 +791,7 @@ Rules:
       if(!r.ok){ state.cloud = { url:"", pw:"" }; toast("Server responded " + r.status, true); return; }
       const incoming = await r.json();
       cloudError = null;
+      lastSyncAt = Date.now();
       state.data = mergeData(state.data, incoming);
       saveLocal();
       lsSet(LS_CLOUD, JSON.stringify(state.cloud));
@@ -768,11 +806,58 @@ Rules:
   function disconnectCloud(){
     state.cloud = { url:"", pw:"" };
     cloudError = null;
+    lastSyncAt = null;
     lsSet(LS_CLOUD, "");
     if($("#cloudUrl")) $("#cloudUrl").value = "";
     if($("#cloudPw")) $("#cloudPw").value = "";
     updateSyncPill(); render();
     toast("Cloud sync disconnected");
+  }
+
+  // pick up ?syncUrl=&syncPw= from a "set up another device" QR/link, then scrub it from history
+  function applyQuerySync(){
+    let qs;
+    try{ qs = new URLSearchParams(location.search); }catch(e){ return false; }
+    const su = qs.get("syncUrl"), sp = qs.get("syncPw");
+    if(!su || !sp) return false;
+    state.cloud = { url: su.replace(/\/+$/,""), pw: sp };
+    lsSet(LS_CLOUD, JSON.stringify(state.cloud));
+    try{ history.replaceState(null, "", location.pathname + location.hash); }catch(e){}
+    return true;
+  }
+
+  // lazy-load a tiny QR generator, only when "Set up another device" is used
+  let _qrLoadP = null;
+  function loadQR(){
+    if(_qrLoadP) return _qrLoadP;
+    _qrLoadP = new Promise(res=>{
+      if(window.qrcode) return res(window.qrcode);
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js";
+      s.onload = ()=> res(window.qrcode || null);
+      s.onerror = ()=> res(null);
+      document.head.appendChild(s);
+    });
+    return _qrLoadP;
+  }
+  async function showSetupQR(){
+    if(!cloudOn()){ toast("Connect cloud sync first.", true); return; }
+    const panel = $("#qrPanel"), box = $("#qrCode");
+    panel.style.display = "block";
+    panel.scrollIntoView({ block:"nearest", behavior:"smooth" });
+    box.textContent = "Loading…";
+    const qrlib = await loadQR();
+    if(!qrlib){ box.textContent = "Couldn't load the QR code generator - check your connection."; return; }
+    const link = location.origin + location.pathname
+      + "?syncUrl=" + encodeURIComponent(state.cloud.url) + "&syncPw=" + encodeURIComponent(state.cloud.pw);
+    try{
+      const qr = qrlib(0, "M");             // typeNumber 0 = auto-size to fit the link
+      qr.addData(link);
+      qr.make();
+      box.innerHTML = qr.createImgTag(5, 8);
+    }catch(e){
+      box.textContent = "Couldn't generate a QR code for that link.";
+    }
   }
 
   // ---------- Claude API ----------
@@ -862,6 +947,47 @@ Rules:
     return sw ? valGrade(ss / sw) : "";
   }
 
+  // ---------- frequent-item quick add ----------
+  function frequentItems(){
+    const groups = new Map();
+    for(const e of state.data.entries){
+      if(e.deleted) continue;
+      const key = (e.item || "").trim().toLowerCase();
+      if(!key) continue;
+      let g = groups.get(key);
+      if(!g){ g = { key, count:0, latest:e }; groups.set(key, g); }
+      g.count++;
+      if(e.ts > g.latest.ts) g.latest = e;
+    }
+    return [...groups.values()]
+      .filter(g => g.count >= 2)
+      .sort((a,b) => b.count - a.count || b.latest.ts - a.latest.ts)
+      .slice(0, 8);
+  }
+  let _freqCache = [];
+  function renderQuickChips(){
+    const wrap = $("#quickChips");
+    if(!wrap) return;
+    _freqCache = frequentItems();
+    if(!_freqCache.length){ wrap.style.display = "none"; wrap.innerHTML = ""; return; }
+    wrap.style.display = "flex";
+    wrap.innerHTML = _freqCache.map(g =>
+      `<button type="button" class="mini ghost" data-act="quickadd" data-key="${esc(g.key)}">+ ${esc(g.latest.item)}</button>`
+    ).join("");
+  }
+  function quickAdd(key){
+    const g = _freqCache.find(x => x.key === key);
+    if(!g) return;
+    const t = g.latest;
+    addEntry({
+      id: uid(), date: state.selectedDate, ts: Date.now(), updated: Date.now(),
+      text: t.text, item: t.item, qty: t.qty, grams: t.grams,
+      protein: t.protein, fat: t.fat, carbs: t.carbs, fiber: t.fiber, kcal: t.kcal,
+      grade: t.grade, gradeNote: t.gradeNote, note: "", source: t.source,
+    });
+    toast("Added " + t.item);
+  }
+
   async function addFromText(){
     if(state.busy) return;
     const text = $("#foodText").value.trim();
@@ -880,6 +1006,7 @@ Rules:
         note: r.note || "", source: "ai",
       });
       $("#foodText").value = ""; $("#foodWeight").value = "";
+      try{ $("#foodText").focus({ preventScroll:true }); }catch(e){}
       toast("Added " + (r.item||text) + " - P" + round(r.protein_g) + " F" + round(r.fat_g) + " C" + round(r.carbs_g) + " Fb" + round(r.fiber_g) + " · " + round(r.kcal) + " kcal" + (normGrade(r.quality_grade) ? " · quality " + normGrade(r.quality_grade) : ""));
     }catch(err){
       toast(err.message, true);
@@ -1345,10 +1472,18 @@ You get a product name and its values per 100 g. Reply with ONLY this JSON: {"gr
   function deleteEntry(id){
     const e = state.data.entries.find(x=>x.id===id);
     if(!e) return;
+    const name = e.item;
     e.deleted = true; e.updated = Date.now();
     if(state.editingId===id) state.editingId = null;
     commit();
-    toast("Deleted");
+    toast("Deleted " + name, false, { label:"Undo", onClick: ()=> undoDelete(id) });
+  }
+  function undoDelete(id){
+    const e = state.data.entries.find(x=>x.id===id);
+    if(!e || !e.deleted) return;
+    e.deleted = false; e.updated = Date.now();
+    commit();
+    toast("Restored " + e.item);
   }
 
   function copyEntryToToday(id){
@@ -1518,9 +1653,15 @@ You get a product name and its values per 100 g. Reply with ONLY this JSON: {"gr
 
     const refreshHtml = state.pendingRefresh ?
       `<div class="refreshbar">Data updated from another device.<button class="mini" data-act="dorefresh">Show</button></div>` : "";
+    const syncHintHtml = (!cloudOn() && !lsGet(LS_SYNC_HINT)) ?
+      `<div class="refreshbar"><span>Not syncing to your other devices yet &mdash; set up Cloud sync in Settings.</span><button class="mini" data-act="dismisssync">Got it</button></div>` : "";
+
+    renderQuickChips();
+    updateKeyHint();
 
     $("#view").innerHTML = `
       ${refreshHtml}
+      ${syncHintHtml}
       <div class="card">
         <div class="totals">
           ${totCell("p","Protein",t.p,"g",num(g.p))}
@@ -1556,7 +1697,7 @@ You get a product name and its values per 100 g. Reply with ONLY this JSON: {"gr
           <div class="full"><label class="lbl">Name</label><input id="e-name" value="${esc(e.item)}"></div>
           ${e.source==="ai" ? `<div class="full"><label class="lbl">Your original text</label><input id="e-orig" value="${esc(e.text)}"></div>` : ""}
           <div class="full"><label class="lbl">Amount</label><input id="e-qty" value="${esc(e.qty)}"></div>
-          <div class="full"><label class="lbl">Portion (g) &mdash; rescales the macros as you change it</label><input id="e-g" type="number" inputmode="decimal" min="0" value="${state.editBase && state.editBase.grams != null ? state.editBase.grams : (e.grams == null ? "" : e.grams)}"></div>
+          <div class="full"><label class="lbl">Portion (g/ml) &mdash; rescales the macros as you change it</label><input id="e-g" type="number" inputmode="decimal" min="0" value="${state.editBase && state.editBase.grams != null ? state.editBase.grams : (e.grams == null ? "" : e.grams)}"></div>
           <div><label class="lbl">Protein g</label><input id="e-p" type="number" inputmode="decimal" min="0" value="${e.protein}"></div>
           <div><label class="lbl">Fat g</label><input id="e-f" type="number" inputmode="decimal" min="0" value="${e.fat}"></div>
           <div><label class="lbl">Carbs g</label><input id="e-c" type="number" inputmode="decimal" min="0" value="${e.carbs}"></div>
@@ -1617,12 +1758,17 @@ You get a product name and its values per 100 g. Reply with ONLY this JSON: {"gr
 
   // ---------- toast ----------
   let toastTimer;
-  function toast(msg, isErr){
+  function toast(msg, isErr, action){
     const el = $("#toast");
-    el.textContent = msg;
+    el.innerHTML = esc(msg) + (action
+      ? ` <button type="button" class="mini ghost" id="toastAction" style="margin-left:8px;min-height:26px;padding:3px 10px;vertical-align:-4px">${esc(action.label)}</button>`
+      : "");
     el.className = "show" + (isErr ? " err" : "");
+    if(action){
+      $("#toastAction").onclick = ()=>{ action.onClick(); el.className = el.className.replace("show",""); };
+    }
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(()=> el.className = el.className.replace("show",""), isErr ? 5200 : 2600);
+    toastTimer = setTimeout(()=> el.className = el.className.replace("show",""), action ? 6000 : (isErr ? 5200 : 2600));
   }
 
   // ---------- export / import ----------
@@ -1682,6 +1828,7 @@ You get a product name and its values per 100 g. Reply with ONLY this JSON: {"gr
     $("#mAdd").onclick = ()=>{
       const name = ($("#mName").value||"").trim();
       if(!name){ toast("Give the item a name", true); return; }
+      const noMacros = ["mP","mF","mC","mK"].every(id => !($("#"+id).value||"").trim());
       addEntry({
         id: uid(), date: state.selectedDate, ts: Date.now(), updated: Date.now(),
         text: name, item: name, qty: ($("#mQty").value||"").trim(),
@@ -1690,8 +1837,13 @@ You get a product name and its values per 100 g. Reply with ONLY this JSON: {"gr
         note: "", source: "manual",
       });
       ["mName","mQty","mG","mP","mF","mC","mFib","mK"].forEach(id=> $("#"+id).value="");
-      toast("Added " + name);
+      toast(noMacros ? "Added " + name + " - no macros yet, edit to add them" : "Added " + name);
     };
+
+    $("#quickChips").addEventListener("click", e=>{
+      const b = e.target.closest('[data-act="quickadd"]'); if(!b) return;
+      quickAdd(b.dataset.key);
+    });
 
     // photo / image
     const onPick = e=>{
@@ -1734,6 +1886,7 @@ You get a product name and its values per 100 g. Reply with ONLY this JSON: {"gr
       else if(act==="hrange"){ state.settings.histRange = +b.dataset.n; saveSettings(); render(); }
       else if(act==="histday"){ state.selectedDate = b.dataset.d; closeEdit(); window.scrollTo({top:0, behavior:"smooth"}); }
       else if(act==="dorefresh"){ state.pendingRefresh=false; state.editingId=null; state.editBase=null; state.manualOpen=false; $("#manualForm").style.display="none"; render(); }
+      else if(act==="dismisssync"){ lsSet(LS_SYNC_HINT, "1"); render(); }
     });
     $("#view").addEventListener("input", e=>{
       const id = e.target && e.target.id;
@@ -1757,6 +1910,7 @@ You get a product name and its values per 100 g. Reply with ONLY this JSON: {"gr
       state.settings.model = $("#model").value;
       state.settings.goals = { p:num($("#gP").value), f:num($("#gF").value), c:num($("#gC").value), fib:num($("#gFib").value), k:num($("#gK").value) };
       saveSettings();
+      updateKeyHint();
       render();
       toast("Settings saved");
     };
@@ -1793,6 +1947,9 @@ You get a product name and its values per 100 g. Reply with ONLY this JSON: {"gr
     };
     $("#cloudConnect").onclick = connectCloud;
     $("#cloudDisconnect").onclick = disconnectCloud;
+    $("#cloudShowQR").onclick = showSetupQR;
+    $("#qrClose").onclick = ()=>{ $("#qrPanel").style.display = "none"; };
+    $("#syncPill").onclick = openSyncSettings;
 
     window.addEventListener("focus", ()=>{ if(cloudOn()) pullFromCloud(true); });
     document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && cloudOn()) pullFromCloud(true); });
@@ -1801,14 +1958,18 @@ You get a product name and its values per 100 g. Reply with ONLY this JSON: {"gr
   // ---------- boot ----------
   async function boot(){
     loadLocal();
+    const fromQR = applyQuerySync();
     applyTheme(lsGet(LS_THEME) || "light");
     bind();
     render();
     if(cloudOn()){
       updateSyncPill();
       await pullFromCloud(true);
+      if(fromQR) toast("Cloud sync set up from QR code");
     }
     updateSyncPill();
+    try{ $("#foodText").focus({ preventScroll:true }); }catch(e){}
+    setInterval(()=>{ if(cloudOn()) updateSyncPill(); }, 60000);
   }
   boot();
 })();
