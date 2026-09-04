@@ -193,6 +193,39 @@ What leaves your devices:
 
 
 -------------------------------------------------------------------------
+SECURITY NOTES
+-------------------------------------------------------------------------
+
+Your Anthropic API key and Cloud sync password live only in this
+browser's storage - never in the page's source, never in the repo.
+Treat both like passwords: the API key can spend against your Anthropic
+account (set a low monthly limit); the sync password is the only thing
+protecting your log on the Worker, since anyone with it has full
+read/write access. If you ever suspect either has leaked, revoke/rotate
+it (delete and reissue the API key in the Anthropic console; change
+APP_PASSWORD in the Worker's settings, which disconnects every device
+until they're reconnected with the new one).
+
+The page also ships:
+ - a Content-Security-Policy that blocks browser-plugin content and
+   base-tag hijacking, and a no-referrer policy (this is a static site
+   on GitHub Pages, which can't set its own server response headers, so
+   a couple of protections - like stopping the page being framed by
+   another site - aren't available; the CSP allows inline scripts/styles
+   since the app is deliberately one plain HTML file with no build step)
+ - Subresource Integrity on the one third-party script it loads (ZXing,
+   the iPhone barcode-reading fallback) - the exact file is hashed, so a
+   compromised CDN serving something else would be refused rather than
+   silently run with access to what's in this browser's storage
+ - CSV exports escape any cell that looks like a spreadsheet formula
+   (leading =, +, -, @), a standard guard against formula-injection
+   attacks when a CSV is later opened in Excel/Sheets
+ - the Cloudflare Worker compares the sync password byte-for-byte in
+   constant time, rather than a plain string ==, so response timing
+   can't be used to guess it a character at a time
+
+
+-------------------------------------------------------------------------
 PUBLISHING A CHANGE
 -------------------------------------------------------------------------
 

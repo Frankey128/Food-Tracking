@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; manifest-src 'self' data:; font-src 'self'; connect-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'self'">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#f5f6f8">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -604,7 +606,10 @@ Rules:
 
   function toCSV(){
     const cell = v => {
-      const s = (v == null) ? "" : String(v);
+      let s = (v == null) ? "" : String(v);
+      // neutralise spreadsheet formula injection: Excel/Sheets treat a leading =,+,-,@ (or
+      // tab/CR) as a formula, which is a known way to smuggle a payload into an exported CSV
+      if(/^[=+\-@\t\r]/.test(s)) s = "'" + s;
       return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
     };
     const lines = [CSV_COLS.join(",")];
@@ -637,8 +642,8 @@ Rules:
     const entries = [];
     for(let r = 1; r < rows.length; r++){
       if(rows[r].length === 1 && rows[r][0] === "") continue;
-      const o = {};
-      head.forEach((h,idx) => o[h] = rows[r][idx]);
+      const o = Object.create(null);   // no prototype - a header literally named "__proto__" etc. can't do anything
+      head.forEach((h,idx) => { if(h) o[h] = rows[r][idx]; });
       if(!o.id && !o.item && !o.date) continue;
       const del = o.deleted;
       entries.push({
@@ -737,8 +742,10 @@ Rules:
     if(body) headers["Content-Type"] = "application/json";
     return fetch(url, { method, headers, body: body || undefined });
   }
+  let pulling = false;   // avoids overlapping GETs when focus + visibilitychange both fire
   async function pullFromCloud(doRender){
-    if(!cloudOn()) return;
+    if(!cloudOn() || pulling) return;
+    pulling = true;
     try{
       const r = await cloudFetch("GET");
       if(!r.ok){ cloudError = r.status === 401 ? "bad password" : ("error " + r.status); updateSyncPill(); return; }
@@ -755,6 +762,7 @@ Rules:
         }
       }
     }catch(e){ cloudError = "offline"; }
+    finally{ pulling = false; }
     updateSyncPill();
   }
   async function pushToCloud(){
@@ -880,15 +888,17 @@ Rules:
       .filter(e => e.date===date && !e.deleted)
       .sort((a,b)=> b.ts - a.ts);   // newest first
   }
-  function dayTotals(date){
+  // both take an already-filtered day's entries (see render()) so a render only
+  // walks state.data.entries once instead of three times
+  function dayTotals(entries){
     const t = {p:0,f:0,c:0,fib:0,k:0,n:0};
-    for(const e of dayEntries(date)){ t.p+=e.protein; t.f+=e.fat; t.c+=e.carbs; t.fib+=(e.fiber||0); t.k+=e.kcal; t.n++; }
+    for(const e of entries){ t.p+=e.protein; t.f+=e.fat; t.c+=e.carbs; t.fib+=(e.fiber||0); t.k+=e.kcal; t.n++; }
     return t;
   }
   // day's overall quality grade: kcal-weighted mean of the graded entries (min weight 1)
-  function dayGrade(date){
+  function dayGrade(entries){
     let sw = 0, ss = 0;
-    for(const e of dayEntries(date)){
+    for(const e of entries){
       const gv = gradeVal(e.grade); if(!gv) continue;
       const w = Math.max(e.kcal, 1); sw += w; ss += w * gv;
     }
@@ -1052,6 +1062,11 @@ Rules:
       if(window.ZXing) return res(window.ZXing);
       const s = document.createElement("script");
       s.src = "https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js";
+      // pinned version + Subresource Integrity: this script gets full page access (including
+      // the API key and sync password in localStorage), so refuse to run it if the CDN ever
+      // serves anything other than the exact file this hash was taken from
+      s.integrity = "sha384-BzBxP10ZE72aitqj5UMmUsbKFliP/DZqA8Wq+BNNhlIJDGoEd1tpkMYXOg9+n6sB";
+      s.crossOrigin = "anonymous";
       s.onload = ()=> res(window.ZXing || null);
       s.onerror = ()=> res(null);
       document.head.appendChild(s);
@@ -1572,8 +1587,9 @@ You get a product name and its values per 100 g. Reply with ONLY this JSON: {"gr
     $("#dayDate").textContent = prettyDate(state.selectedDate);
 
     const g = state.settings.goals;
-    const t = dayTotals(state.selectedDate);
-    const dg = dayGrade(state.selectedDate);
+    const entries = dayEntries(state.selectedDate);
+    const t = dayTotals(entries);
+    const dg = dayGrade(entries);
 
     $("#dayTotBar").innerHTML =
       `<span class="m-p"><b>${t.p}</b> P</span>` +
@@ -1595,7 +1611,6 @@ You get a product name and its values per 100 g. Reply with ONLY this JSON: {"gr
       </div>`;
     }
 
-    const entries = dayEntries(state.selectedDate);
     const entriesHtml = entries.length ? entries.map(renderEntry).join("") :
       `<div class="empty">Nothing logged for ${esc(relLabel(state.selectedDate).toLowerCase())}.<br>Add something above.</div>`;
 

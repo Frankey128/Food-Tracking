@@ -55,7 +55,16 @@ function authOk(request, env) {
   const auth = request.headers.get("Authorization") || "";
   const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   const header = request.headers.get("X-App-Password") || "";
-  return (bearer && bearer === pw) || (header && header === pw);
+  return (bearer && timingSafeEqual(bearer, pw)) || (header && timingSafeEqual(header, pw));
+}
+// plain === leaks how many leading characters matched via response-time differences;
+// compare every byte regardless of where the first mismatch is
+function timingSafeEqual(a, b) {
+  const ab = new TextEncoder().encode(a), bb = new TextEncoder().encode(b);
+  if (ab.length !== bb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ bb[i];
+  return diff === 0;
 }
 function corsHeaders(origin) {
   const allow = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
