@@ -45,11 +45,6 @@ USING IT
      connect. The little pill next to the theme toggle (top right) always
      shows sync status - tap it any time to jump straight to these
      settings, and once connected it shows how long ago it last synced.
-   - "Set up another device..." (next to Connect/Disconnect) shows a QR
-     code with the Worker URL and password baked in. Scan it with your
-     other device's camera app and it opens the link and connects cloud
-     sync there automatically - no retyping a long URL and password on a
-     phone keyboard. Only show that code to your own devices.
 
 4. Add food: type e.g. "2 slices wholemeal toast with butter, boiled egg"
    and press Add.

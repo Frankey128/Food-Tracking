@@ -369,14 +369,8 @@
       <div class="row wrap" style="margin-top:8px">
         <button class="mini primary" id="cloudConnect">Connect</button>
         <button class="mini ghost" id="cloudDisconnect">Disconnect</button>
-        <button class="mini ghost" id="cloudShowQR">Set up another device&hellip;</button>
       </div>
       <div class="hint">Enter the same URL and password on every device &mdash; phone included &mdash; and every add, edit and delete syncs automatically. Leave blank to keep data on this device only.</div>
-      <div id="qrPanel" style="display:none;margin-top:10px;text-align:center">
-        <div id="qrCode" style="display:inline-block;background:#fff;padding:10px;border-radius:10px"></div>
-        <div class="hint">Scan this with your other device's camera app &mdash; it opens the link and connects cloud sync there automatically. Anyone who scans it can read and edit this log, so only show it to your own devices.</div>
-        <button class="mini ghost" id="qrClose" style="margin-top:8px">Hide</button>
-      </div>
     </div>
 
     <hr>
@@ -812,52 +806,6 @@ Rules:
     if($("#cloudPw")) $("#cloudPw").value = "";
     updateSyncPill(); render();
     toast("Cloud sync disconnected");
-  }
-
-  // pick up ?syncUrl=&syncPw= from a "set up another device" QR/link, then scrub it from history
-  function applyQuerySync(){
-    let qs;
-    try{ qs = new URLSearchParams(location.search); }catch(e){ return false; }
-    const su = qs.get("syncUrl"), sp = qs.get("syncPw");
-    if(!su || !sp) return false;
-    state.cloud = { url: su.replace(/\/+$/,""), pw: sp };
-    lsSet(LS_CLOUD, JSON.stringify(state.cloud));
-    try{ history.replaceState(null, "", location.pathname + location.hash); }catch(e){}
-    return true;
-  }
-
-  // lazy-load a tiny QR generator, only when "Set up another device" is used
-  let _qrLoadP = null;
-  function loadQR(){
-    if(_qrLoadP) return _qrLoadP;
-    _qrLoadP = new Promise(res=>{
-      if(window.qrcode) return res(window.qrcode);
-      const s = document.createElement("script");
-      s.src = "https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js";
-      s.onload = ()=> res(window.qrcode || null);
-      s.onerror = ()=> res(null);
-      document.head.appendChild(s);
-    });
-    return _qrLoadP;
-  }
-  async function showSetupQR(){
-    if(!cloudOn()){ toast("Connect cloud sync first.", true); return; }
-    const panel = $("#qrPanel"), box = $("#qrCode");
-    panel.style.display = "block";
-    panel.scrollIntoView({ block:"nearest", behavior:"smooth" });
-    box.textContent = "Loading…";
-    const qrlib = await loadQR();
-    if(!qrlib){ box.textContent = "Couldn't load the QR code generator - check your connection."; return; }
-    const link = location.origin + location.pathname
-      + "?syncUrl=" + encodeURIComponent(state.cloud.url) + "&syncPw=" + encodeURIComponent(state.cloud.pw);
-    try{
-      const qr = qrlib(0, "M");             // typeNumber 0 = auto-size to fit the link
-      qr.addData(link);
-      qr.make();
-      box.innerHTML = qr.createImgTag(5, 8);
-    }catch(e){
-      box.textContent = "Couldn't generate a QR code for that link.";
-    }
   }
 
   // ---------- Claude API ----------
@@ -1947,8 +1895,6 @@ You get a product name and its values per 100 g. Reply with ONLY this JSON: {"gr
     };
     $("#cloudConnect").onclick = connectCloud;
     $("#cloudDisconnect").onclick = disconnectCloud;
-    $("#cloudShowQR").onclick = showSetupQR;
-    $("#qrClose").onclick = ()=>{ $("#qrPanel").style.display = "none"; };
     $("#syncPill").onclick = openSyncSettings;
 
     window.addEventListener("focus", ()=>{ if(cloudOn()) pullFromCloud(true); });
@@ -1958,14 +1904,12 @@ You get a product name and its values per 100 g. Reply with ONLY this JSON: {"gr
   // ---------- boot ----------
   async function boot(){
     loadLocal();
-    const fromQR = applyQuerySync();
     applyTheme(lsGet(LS_THEME) || "light");
     bind();
     render();
     if(cloudOn()){
       updateSyncPill();
       await pullFromCloud(true);
-      if(fromQR) toast("Cloud sync set up from QR code");
     }
     updateSyncPill();
     try{ $("#foodText").focus({ preventScroll:true }); }catch(e){}
