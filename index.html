@@ -119,6 +119,12 @@
     background-position:calc(100% - 18px) 52%,calc(100% - 13px) 52%;
     background-size:5px 5px,5px 5px;background-repeat:no-repeat;
   }
+  #quickChips{
+    width:auto;max-width:170px;min-height:34px;padding:6px 28px 6px 11px;
+    font-size:12.5px;border-radius:9px;background-color:transparent;border-color:var(--line);
+    background-position:calc(100% - 14px) 50%,calc(100% - 9px) 50%;
+  }
+  #quickChips:hover{border-color:var(--line-strong)}
 
   .card{
     background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
@@ -304,11 +310,11 @@
       <input id="foodWeight" type="number" inputmode="numeric" min="0" placeholder="g/ml" title="Total weight or volume in grams or millilitres (optional &mdash; the AI estimates it if left blank)" style="max-width:64px;text-align:center">
       <button class="primary" id="addBtn">Add</button>
     </div>
-    <div class="toolbar" id="quickChips" style="display:none"></div>
     <div class="hint" id="keyHint" style="display:none">Add your Anthropic API key in Settings to enable AI food and photo estimates. Manual entry and barcode scanning still work without one.</div>
     <div class="toolbar">
       <button class="mini ghost" id="photoCamBtn">📷 Take photo</button>
       <button class="mini ghost" id="photoLibBtn">🖼 Choose image</button>
+      <select id="quickChips" style="display:none" title="Log something you've added before, with the same numbers"></select>
       <button class="mini ghost" id="manualToggle">+ Enter macros manually</button>
       <span class="hint" id="addHint"></span>
     </div>
@@ -924,14 +930,19 @@ Rules:
   }
   let _freqCache = [];
   function renderQuickChips(){
-    const wrap = $("#quickChips");
-    if(!wrap) return;
+    const sel = $("#quickChips");
+    if(!sel) return;
+    const prev = _freqCache;
     _freqCache = frequentItems();
-    if(!_freqCache.length){ wrap.style.display = "none"; wrap.innerHTML = ""; return; }
-    wrap.style.display = "flex";
-    wrap.innerHTML = _freqCache.map(g =>
-      `<button type="button" class="mini ghost" data-act="quickadd" data-key="${esc(g.key)}">+ ${esc(g.latest.item)}</button>`
-    ).join("");
+    if(!_freqCache.length){ sel.style.display = "none"; sel.innerHTML = ""; return; }
+    sel.style.display = "";
+    // only rebuild the options when the list actually changed, so an open dropdown doesn't
+    // get its options replaced out from under the user mid-choice
+    const changed = prev.length !== _freqCache.length || prev.some((g,i) => g.key !== _freqCache[i].key);
+    if(changed){
+      sel.innerHTML = '<option value="">+ Quick add&hellip;</option>' +
+        _freqCache.map(g => `<option value="${esc(g.key)}">${esc(g.latest.item)}</option>`).join("");
+    }
   }
   function quickAdd(key){
     const g = _freqCache.find(x => x.key === key);
@@ -1635,11 +1646,11 @@ You get a product name and its values per 100 g. Reply with ONLY this JSON: {"gr
         </div>
         <div class="qline">
           ${dg
-            ? `<span>Food quality ${state.selectedDate===todayStr() ? "today" : "for " + esc(relLabel(state.selectedDate).toLowerCase())}</span> ${gradeChip(dg)} <span>&mdash; kcal-weighted, Nutri-Score style, a rough guide for a UK adult</span>`
-            : `<span>Log AI, photo or barcode items to get an A&ndash;E food-quality score for the day.</span>`}
+            ? `<span>Food quality ${state.selectedDate===todayStr() ? "today" : "for " + esc(relLabel(state.selectedDate).toLowerCase())}:</span> ${gradeChip(dg)}`
+            : `<span>Add a graded item to see today's food-quality score.</span>`}
           <details class="qguide"><summary>What A&ndash;E means</summary>
             <div class="hint">A &ndash; nutrient-dense, minimally processed &nbsp;&middot;&nbsp; B &ndash; solid everyday choice &nbsp;&middot;&nbsp; C &ndash; fine in moderation &nbsp;&middot;&nbsp; D &ndash; a treat, keep it occasional &nbsp;&middot;&nbsp; E &ndash; rarely.<br>
-            Comes from the pack's Nutri-Score when you scan a barcode, otherwise the AI's estimate for a typical UK adult. Manual entries aren't graded unless you set one in Edit.</div>
+            The day's grade is a kcal-weighted average of its graded items - a rough guide for a UK adult. Comes from the pack's Nutri-Score when you scan a barcode, otherwise the AI's estimate. Manual entries aren't graded unless you set one in Edit.</div>
           </details>
         </div>
       </div>
@@ -1803,9 +1814,10 @@ You get a product name and its values per 100 g. Reply with ONLY this JSON: {"gr
       toast(noMacros ? "Added " + name + " - no macros yet, edit to add them" : "Added " + name);
     };
 
-    $("#quickChips").addEventListener("click", e=>{
-      const b = e.target.closest('[data-act="quickadd"]'); if(!b) return;
-      quickAdd(b.dataset.key);
+    $("#quickChips").addEventListener("change", ()=>{
+      const sel = $("#quickChips");
+      if(sel.value) quickAdd(sel.value);
+      sel.value = "";
     });
 
     // photo / image

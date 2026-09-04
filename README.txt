@@ -52,9 +52,9 @@ USING IT
      weight or volume (drinks work in ml too). Fill it and the AI works
      to that amount; leave it blank and the AI estimates it itself.
      "+ Enter macros manually" also has an optional Weight (g/ml).
-   - Items you've logged twice or more show as small "+ Name" chips under
-     the box - tap one to log it again instantly with the same numbers,
-     no AI call needed.
+   - Items you've logged twice or more show up in a small "+ Quick add"
+     dropdown next to "Take photo" - pick one to log it again instantly
+     with the same numbers, no AI call needed.
    - The day's log lists newest at the top.
    - Deleting a row shows a "Deleted - Undo" toast for a few seconds if
      you tap it by mistake.
